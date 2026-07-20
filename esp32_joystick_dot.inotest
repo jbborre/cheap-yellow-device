@@ -1,0 +1,151 @@
+// esp32_joystick_dot.ino
+// Moves a white dot on screen using a joystick connected to I2C
+
+#include <Arduino.h>
+#include <Wire.h>
+#include <TFT_eSPI.h> // Hardware-specific library
+
+// Initialize the TFT library
+TFT_eSPI tft = TFT_eSPI();
+
+// Define display dimensions
+#define DISPLAY_WIDTH 320
+#define DISPLAY_HEIGHT 240
+
+// PCF8574 I2C address (typically 0x20)
+#define PCF8574_ADDRESS 0x20
+
+// Basic color definitions
+#define BLACK   0x0000
+#define WHITE   0xFFFF
+#define RED     0xF800
+#define GREEN   0x07E0
+#define BLUE    0x001F
+
+// Main dot position
+int16_t dotX = DISPLAY_WIDTH / 2;
+int16_t dotY = DISPLAY_HEIGHT / 2;
+
+// Function to initialize display
+void initDisplay() {
+  // pinMode(21, OUTPUT);  // Backlight pin
+  // digitalWrite(21, HIGH);  // Turn on backlight (active low)
+  
+  tft.init();
+  
+  // Turn backlight back on after init (library may have reset it)
+  // digitalWrite(21, HIGH);
+  
+  tft.setRotation(0);  // Set rotation if needed
+  tft.fillScreen(BLACK);
+  tft.setTextColor(WHITE);
+  tft.setTextSize(1);
+}
+// Initialize I2C
+void initI2C() {
+  printf("Initializing I2C...");
+  Wire.begin(19, 23);  // SDA = GPIO19, SCL = GPIO23 (adjust as needed)
+  
+  // Check if device is responding
+  Wire.beginTransmission(PCF8574_ADDRESS);
+  uint8_t error = Wire.endTransmission();
+  printf("Checking I2C device...");
+  if (error == 0) {
+    Serial.println("I2C device found at address 0x20");
+  } else {
+    Serial.println("No I2C device found at address 0x20");
+  }
+}
+
+// Read joystick position from I2C
+void readJoystick(int16_t* x, int16_t* y, bool* button) {
+  *x = 0;
+  *y = 0;
+  *button = false;
+  
+  // Request 1 byte from PCF8574
+  printf("reading joystick...\n");
+  Wire.requestFrom(PCF8574_ADDRESS, 1);
+  
+  if (Wire.available()) {
+    uint8_t value = Wire.read();
+    printf("Joystick raw value: 0x%02X\n", value);
+    
+    // Simple joystick interpretation:
+    // Pin 0: Button
+    // Pin 1: Y (Up/Down)  
+    // Pin 2: X (Left/Right)
+
+    printf("Interpreting joystick value...\n");
+    printf("Button: %d\n", (value & 0x10) == 0);
+    printf("X: %d\n", (value & 0x01) == 0 ? -100 : (value & 0x02) == 0 ? 100 : 0);
+    printf("Y: %d\n", (value & 0x04) == 0 ? -100 : (value & 0x08) == 0 ? 100 : 0);
+    
+    // if ((value & 0x01) == 0) *x = -100;  // Left
+    // if ((value & 0x02) == 0) *x = 100;   // Right
+    // if ((value & 0x04) == 0) *y = -100;  // Up
+    // if ((value & 0x08) == 0) *y = 100;   // Down
+    // if ((value & 0x10) == 0) *button = true;  // Button
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Initialize display
+  initDisplay();
+
+  // Initialize I2C
+  initI2C();
+  Serial.println("Joystick dot control initialized!");
+  Serial.println("Move joystick to control dot position");
+
+  // Draw initial dot
+  tft.drawPixel(dotX, dotY, WHITE);
+}
+
+void loop() {
+  static unsigned long lastUpdate = 0;
+  static int16_t lastX = dotX;
+  static int16_t lastY = dotY;
+  
+  // Only update every 20ms for smoother movement
+  if (millis() - lastUpdate > 20) {
+    int16_t x, y;
+    bool button;
+    
+    // Read joystick input
+    readJoystick(&x, &y, &button);
+    
+    // Update dot position based on joystick input
+    if (x != 0 || y != 0) {
+      // Scale joystick values to movement
+      int16_t moveX = x / 10;
+      int16_t moveY = y / 10;
+      
+      // Update position
+      dotX += moveX;
+      dotY += moveY;
+      
+      // Keep dot within display bounds
+      if (dotX < 0) dotX = 0;
+      if (dotX >= DISPLAY_WIDTH) dotX = DISPLAY_WIDTH - 1;
+      if (dotY < 0) dotY = 0;
+      if (dotY >= DISPLAY_HEIGHT) dotY = DISPLAY_HEIGHT - 1;
+    }
+    
+    // Clear old position
+    tft.drawPixel(lastX, lastY, BLACK);
+    
+    // Draw new position
+    tft.drawPixel(dotX, dotY, WHITE);
+    
+    // Update last positions
+    lastX = dotX;
+    lastY = dotY;
+    
+    lastUpdate = millis();
+  }
+  
+  delay(1000);  // Small delay to prevent excessive CPU usage
+}
