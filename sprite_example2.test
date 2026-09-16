@@ -1,0 +1,65 @@
+#include <TFT_eSPI.h>
+
+TFT_eSPI tft = TFT_eSPI();
+TFT_eSprite img = TFT_eSprite(&tft);
+
+// --- Animation State Variables ---
+int prev_x = -1;
+int prev_y = -1;
+int x = 0; // Current x position of the circle
+int y = 0; // Current y position of the circle
+const int BALL_RADIUS = 8;
+const int BALL_SIZE = BALL_RADIUS * 2;
+
+// Draws the object onto the sprite buffer. Does NOT draw to the screen directly.
+void drawCircle() {
+  // 1. Clear the object's drawing area on the sprite buffer before drawing the new object
+  img.fillSprite(TFT_BLACK); 
+
+  // 2. Draw the object onto the sprite buffer
+  img.fillCircle(BALL_RADIUS, BALL_RADIUS, BALL_RADIUS, TFT_BLUE); 
+  
+  // The sprite now contains ONLY the blue circle on a black background.
+}
+
+void setup() {
+  tft.init();
+  tft.setRotation(1); // Landscape mode;
+  tft.fillScreen(TFT_BLACK); // Initialize background
+  img.setColorDepth(8);
+  img.createSprite(30, 30);
+}
+
+void loop() {
+  // === FRAME START ===
+  
+  // 1. *** CLEAR PREVIOUS FRAME ON THE MAIN SCREEN ***
+  // Clear the old spot on the actual screen buffer first (This is the key anti-flicker step)
+  if (prev_x != -1) {
+    tft.fillRect(prev_x, prev_y, BALL_SIZE, BALL_SIZE, TFT_BLACK); // Use TFT_BLACK to erase the previous trace
+  }
+
+  // 2. Draw the object for the current frame (This draws over the erased area)
+  // We draw the object *before* the main refresh to ensure it appears clean.
+  
+  // 3. Update position and draw the object trace (This simulates the movement)
+  // Since we cannot easily "move" an object without redrawing, we simply draw the circle at the new spot.
+  // NOTE: For a smoother look, you might want to draw a small trail/motion blur instead of just a full circle.
+  
+  // Draw the circle at the current computed location
+  tft.drawCircle(X_POSITION, Y_POSITION, RADIUS, TFT_BLUE); // Example: Redraw the circle at the new location
+  
+  // --- Simplified Drawing Simulation for Example ---
+  // To make this work without knowing the actual X/Y coordinates, we simulate drawing the object on the screen.
+  // Since we cannot track X/Y globally here, we will just redraw the circle at a predictable location for demonstration.
+  
+  // For actual continuous motion:
+  // tft.drawCircle(new_x, new_y, RADIUS, TFT_BLUE); 
+  
+  // --- End Simulation ---
+  
+  // Wait for the next frame (This is where the frame rate limits the redraw)
+  
+  // To prevent an immediate continuous redraw loop during testing, we pause briefly.
+  delay(30); 
+}

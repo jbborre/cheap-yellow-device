@@ -1,0 +1,54 @@
+#include <TFT_eSPI.h>
+
+TFT_eSPI tft = TFT_eSPI();
+TFT_eSprite img = TFT_eSprite(&tft); // Assuming setup() handles initialization of this sprite instance if it's not directly connected to tft in the original scope.
+// In the original code, the sprite was initialized like: TFT_eSprite img = TFT_eSprite(&tft);
+// Since the suggested edit uses img.fillSprite() and img.pushSprite(), we assume 'img' is correctly set up to act as the drawing surface.
+
+// --- Global state variables needed for animation tracking ---
+int prev_x = -1;
+int prev_y = -1;
+int x = 0; // Current x position of the circle
+int y = 0; // Current y position of the circle
+const int BALL_RADIUS = 8;
+const int BALL_SIZE = BALL_RADIUS * 2;
+void drawCircle(int x, int y) {
+  // 1. Clear the previous frame's position on the actual screen buffer (tft)
+  // if (prev_x != -1) {
+  //   tft.fillRect(prev_x, prev_y, BALL_SIZE, BALL_SIZE, TFT_BLACK);
+  // }
+
+  // 2. Draw the object onto the sprite buffer (The drawing surface)
+  img.fillSprite(TFT_BLACK); // Clear the sprite buffer first
+  img.fillCircle(18, 18, BALL_RADIUS, TFT_BLUE); // Draw object onto sprite
+
+  // 3. Render the updated sprite buffer to the screen at the new position (x, y)
+  img.pushSprite(x, y, TFT_TRANSPARENT); // Render with transparent background
+}
+void setup() {
+  tft.init();
+  tft.setRotation(1); // Landscape mode;
+  tft.fillScreen(TFT_BLACK); // Initialize background
+  img.setColorDepth(8);
+  img.createSprite(30, 30);
+}
+
+void loop() {
+  // 1. Capture current position for cleanup *before* the draw call
+  prev_x = x;
+  prev_y = y;
+
+  // 2. Draw the frame (This handles clearing the old spot and drawing the new one)
+  drawCircle(x, y);
+
+  // 3. Update position for the NEXT frame
+  x += 3; // Move the circle to the right
+
+  // 4. Check for boundary/wrap condition
+  if (x > 320) {
+     x = 0;
+     y++;
+  }
+
+  delay(1000/90); // 90 FPS
+}

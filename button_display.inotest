@@ -1,0 +1,106 @@
+// Includes necessary libraries for GUI drawing (e.g., <TFT_eSPI.h> or similar)
+#include <Arduino.h>
+#include <Wire.h>
+#include <TFT_eSPI.h> // Example GUI library for ESP32
+
+// Create a global tft object and initialize it globally or in setup
+TFT_eSPI tft = TFT_eSPI();
+// Create a sprite object for efficient drawing/refreshing
+TFT_eSprite tft_sprite = TFT_eSprite(&tft);
+
+// Define button coordinates and size
+#define LEFT_ARROW_X 10
+#define LEFT_ARROW_Y 200
+#define RIGHT_ARROW_X 200
+#define RIGHT_ARROW_Y 200
+#define BUTTON_WIDTH 100
+#define BUTTON_HEIGHT 50
+// Define colors using standard TFT_eSPI definitions if available
+#define GREEN TFT_GREEN
+
+// Global state for the ball simulation
+float ball_x = 50.0;
+float ball_y = 100.0;
+float ball_speed_x = 1.0;
+float ball_speed_y = 0.5;
+
+void setup() {
+  Serial.begin(115200);
+
+  // *** IMPORTANT: Initialize the display ***
+  tft.init();
+  tft.setRotation(1); // Set appropriate rotation (adjust as needed)
+  
+  // *** Initialize the sprite buffer ***
+  // This assumes the sprite buffer size matches the screen size
+  tft_sprite.begin();
+  Serial.println("Green Button Display Initialized with Sprite Buffer.");
+}
+
+void loop() {
+  // 1. Draw all frame elements onto the sprite
+  drawFrameElements();
+
+  // 2. Update simulation state
+  updateBallPosition();
+
+  // 3. Push the entire buffered frame to the physical screen
+  // This is the refresh step using the hardware layer
+//   tft.pushImage(0, 0, tft.width(), tft.height(), tft_sprite.getBuffer());
+    tft_sprite.pushSprite(0, 0); // Push the sprite to the display at (0,0)
+  // 4. Wait for a short period before updating again
+
+  // Delay time should be related to the speed and desired refresh rate
+  delay(30);
+}
+
+void drawFrameElements() {
+    // Clear the sprite buffer before drawing the new frame
+    tft_sprite.fillRect(0, 0, tft.width(), tft.height(), TFT_BLACK);
+
+    // Draw the ball onto the sprite
+    drawBall();
+
+    // Draw the buttons onto the sprite
+    drawButtons();
+}
+
+void drawBall() {
+    // Draw the ball (simple circle approximation) onto the sprite
+    int ball_radius = 10;
+    tft_sprite.fillCircle(ball_x, ball_y, ball_radius, TFT_YELLOW); // Changed ball color to YELLOW for visibility
+}
+
+void updateBallPosition() {
+    // Simple boundary checking and movement simulation
+    ball_x += ball_speed_x;
+    ball_y += ball_speed_y;
+
+    // Bounce off horizontal edges
+    if (ball_x + 15 > tft.width() - 15 || ball_x - 15 < 15) {
+        ball_speed_x *= -1;
+    }
+    // Bounce off vertical edges
+    if (ball_y + 15 > tft.height() - 15 || ball_y - 15 < 15) {
+        ball_speed_y *= -1;
+    }
+}
+void drawButtons() {
+  // --- Left Arrow Button (Lower Left) ---
+  // Draw Green Background
+  tft_sprite.fillRect(LEFT_ARROW_X, LEFT_ARROW_Y, BUTTON_WIDTH, BUTTON_HEIGHT, GREEN);
+  // Draw Arrow Graphic
+  tft_sprite.setCursor(LEFT_ARROW_X + 10, LEFT_ARROW_Y + 10);
+  tft_sprite.setTextColor(TFT_BLACK);
+  tft_sprite.print("<");
+  Serial.println("Left Arrow Button Drawn.");
+
+  // --- Right Arrow Button (Lower Right) ---
+  // Draw Green Background
+  tft_sprite.fillRect(RIGHT_ARROW_X, RIGHT_ARROW_Y, BUTTON_WIDTH, BUTTON_HEIGHT, GREEN);
+  // Draw Arrow Graphic
+  tft_sprite.setCursor(RIGHT_ARROW_X + 10, RIGHT_ARROW_Y + 10);
+  tft_sprite.setTextColor(TFT_BLACK);
+  tft_sprite.print(">");
+  Serial.println("Right Arrow Button Drawn.");
+}
