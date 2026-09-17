@@ -1,0 +1,190 @@
+#include <TFT_eSPI.h>
+#include <Arduino.h>
+
+TFT_eSPI tft = TFT_eSPI();
+
+// ---------------- STATE ----------------
+enum State { SPLASH, GAME, GAME_OVER };
+State state = SPLASH;
+
+// Button rectangles (filled in per screen)
+int btnX = 0, btnY = 0, btnW = 0, btnH = 0;
+
+// Game vars
+float ballX = 0, ballY = 0;
+float ballVelY = 2.0f;
+int   paddleX = 0;
+int   score = 0;
+
+// Touch tracking
+int lastTouchX = -1;
+bool touching = false;
+
+// ---------------- TOUCH HELPERS ----------------
+bool getTouch(int &x, int &y, bool &touched) {
+  touched = tft.getTouch(&x, &y);
+  if (touched && x > 0) {
+    // XPT2046 reports pressure; ignore light/accidental touches
+    if (x < 50) touched = false;
+  }
+  return touched;
+}
+
+bool inButton(int x, int y) {
+  return x >= btnX && x <= btnX + btnW &&
+         y >= btnY && y <= btnY + btnH;
+}
+
+// ---------------- TEXT / BUTTON ----------------
+void centerText(const char* text, int yCenter, int16_t fg, int16_t bg) {
+  int x0, y0; uint16_t w, h;
+  tft.getTextBounds(text, 0, 0, &x0, &y0, &w, &h);
+  tft.setTextColor(fg, bg);
+  tft.drawString(text, TFT_WIDTH / 2 - w / 2, yCenter - h / 2);
+}
+
+void drawButton(int x, int y, int w, int h, const char* label,
+                uint16_t bg, uint16_t fg, bool highlight = false) {
+  uint16_t fill = highlight ? tft.color565(0, 255, 0) : bg;
+  tft.fillRoundRect(x, y, w, h, 8, fill);
+  centerText(label, y + h / 2, fg, fill);
+  // Store rectangle for hit-testing
+  btnX = x; btnY = y; btnW = w; btnH = h;
+}
+
+void setButton(int x, int y, int w, int h) {
+  btnX = x; btnY = y; btnW = w; btnH = h;
+}
+
+// ---------------- SPLASH SCREEN ----------------
+void showSplash() {
+  state = SPLASH;
+  tft.fillScreen(TFT_BLACK);
+
+  // Stars
+  randomSeed(analogRead(0) + millis());
+  for (int i = 0; i < 40; i++) {
+    tft.fillCircle(random(TFT_WIDTH), random(TFT_HEIGHT), random(1, 3), TFT_WHITE);
+  }
+
+  tft.setTextSize(4);
+  centerText("Auggie's Game", TFT_HEIGHT / 2 - 40, TFT_YELLOW, TFT_BLACK);
+
+  tft.setTextSize(1);
+  centerText("Tap START to play!", TFT_HEIGHT / 2, TFT_CYAN, TFT_BLACK);
+
+  int bx = TFT_WIDTH / 2 - 60, by = TFT_HEIGHT / 2 + 20;
+  drawButton(bx, by, 120, 44, "START", TFT_GREEN, TFT_WHITE);
+}
+
+// ---------------- GAME ----------------
+const int PADDLE_W = 50;
+const int PADDLE_H = 10;
+const int PADDLE_Y = TFT_HEIGHT - 25;
+
+void startGame() {
+  state = GAME;
+  score = 0;
+  resetBall();
+  paddleX = TFT_WIDTH / 2 - PADDLE_W / 2;
+  renderGame();
+}
+
+void resetBall() {
+  ballX = random(PADDLE_W, TFT_WIDTH - PADDLE_W);
+  ballY = 10;
+  ballVelY = 1.8f + random(0, 30) / 100.0f + score * 0.02f;
+}
+
+void renderGame() {
+  tft.fillScreen(TFT_BLACK);
+
+  tft.setTextSize(2);
+  centerText("Score: " + String(score), 10, TFT_YELLOW, TFT_BLACK);
+
+  tft.fillRoundRect(paddleX, PADDLE_Y, PADDLE_W, PADDLE_H, 4, TFT_CYAN);
+  tft.fillCircle((int)ballX, (int)ballY, 7, TFT_RED);
+}
+
+// ---------------- GAME OVER ----------------
+void showGameOver() {
+  state = GAME_OVER;
+  tft.fillScreen(TFT_BLACK);
+
+  tft.setTextSize(5);
+  centerText("GAME OVER", 50, TFT_RED, TFT_BLACK);
+
+  tft.setTextSize(3);
+  centerText("Score: " + String(score), 110, TFT_YELLOW, TFT_BLACK);
+
+  tft.setTextSize(1);
+  centerText("Tap RESTART to play again", 150, TFT_CYAN, TFT_BLACK);
+
+  int bx = TFT_WIDTH / 2 - 60, by = 170;
+  drawButton(bx, by, 120, 44, "RESTART", TFT_GREEN, TFT_WHITE);
+}
+
+// ---------------- LOOP ----------------
+void loop() {
+  int tx, ty;
+  bool t = getTouch(tx, ty, touching);
+  static bool wasTouching = false;
+
+  if (state == SPLASH) {
+    // Highlight button while finger is on it
+    if (t && inButton(tx, ty)) {
+      drawButton(btnX, btnY, btnW, btnH, "START", TFT_GREEN, TFT_WHITE, true);
+    }
+    // Fire only on touch-RELEASE inside the button (proper "click" behavior)
+    if (wasTouching && !t && false) startGame();
+
+    if (wasTouching && !touching) {
+      // Released — if release happened over button (approx: last pos was inside)
+      // Simplest robust approach: fire when touch STARTS inside the button:
+      if (t == false && lastTouchX >= btnX && lastTouchX <= btnX + btnW &&
+          lastTouchY >= btnY && lastTouchY <= btnY + btnH) {
+        startGame();
+      }
+    }
+    wasTouching = touching;
+    if (t) { lastTouchX = tx; lastTouchY = ty; }
+    delay(20);
+
+  } else if (state == GAME) {
+    // Drag paddle: follow finger's x while touching
+    if (t) {
+      int target = tx - PADDLE_W / 2;
+      // Smooth follow
+      paddleX += (target - paddleX) / 2;
+      if (paddleX < 0) paddleX = 0;
+      if (paddleX > TFT_WIDTH - PADDLE_W) paddleX = TFT_WIDTH - PADDLE_W;
+    }
+
+    // Move ball
+    ballY += ballVelY;
+
+    // Collision
+    if (ballY + 7 >= PADDLE_Y &&
+        ballX >= paddleX && ballX <= paddleX + PADDLE_W) {
+      score++;
+      resetBall();
+    }
+    // Missed
+    else if (ballY - 7 > TFT_HEIGHT) {
+      showGameOver();
+      delay(500);   // cooldown so the "miss" finger-lift doesn't instantly restart
+    }
+
+    renderGame();
+    delay(25);
+
+  } else if (state == GAME_OVER) {
+    if (t && inButton(tx, ty)) {
+      drawButton(btnX, btnY, btnW, btnH, "RESTART", TFT_GREEN, TFT_WHITE, true);
+      // Wait for release so it's a deliberate tap
+      while (tft.getTouch(&tx, &ty)) delay(10);
+      startGame();
+    }
+    delay(20);
+  }
+}
