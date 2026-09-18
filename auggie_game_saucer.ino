@@ -1,4 +1,4 @@
-// Auggie's Game - touch splash screen for the ESP32 Cheap Yellow Display.
+// Auggie's Game - game menu and Space Saucer game for the ESP32 Cheap Yellow Display.
 #include <Arduino.h>
 #include <FS.h>
 #include <SPIFFS.h>
@@ -16,7 +16,9 @@ constexpr uint8_t TOUCH_IRQ = 36;
 constexpr uint8_t TOUCH_MOSI = 32;
 constexpr uint8_t TOUCH_MISO = 39;
 constexpr uint8_t TOUCH_SCLK = 25;
-constexpr uint32_t CALIBRATION_MAGIC = 0x41554734; // "AUG4"
+// Bump this when a fresh saved touch calibration is needed on the device.
+constexpr uint32_t CALIBRATION_MAGIC = 0x41554735; // "AUG5"
+constexpr int16_t CALIBRATION_INSET = 18;
 
 SPIClass touchSPI(VSPI);
 XPT2046_Touchscreen touch(TOUCH_CS, TOUCH_IRQ);
@@ -40,10 +42,10 @@ struct TouchButton {
   bool contains(uint16_t tx, uint16_t ty) const {
     return tx >= x && tx < x + w && ty >= y && ty < y + h;
   }
-} startButton;
+} startButton, chooseGameButton, saucerMenuButton, yodaMenuButton, backButton;
 
-enum GameState { SPLASH, PLAYING, RESULTS };
-GameState gameState = SPLASH;
+enum GameState { HOME_MENU, GAME_LIST, PLAYING, RESULTS, YODA_PLAYING };
+GameState gameState = HOME_MENU;
 bool buttonWasPressed = false;
 bool touchWasDown = false;
 
@@ -60,6 +62,16 @@ struct Saucer {
 uint16_t score = 0;
 uint32_t levelStarted = 0;
 uint32_t lastGameFrame = 0;
+
+// Baby Yoda's needs gradually drop while the pet screen is open.
+uint8_t yodaHunger = 78;
+uint8_t yodaHappiness = 78;
+uint8_t yodaEnergy = 78;
+uint32_t lastYodaNeedUpdate = 0;
+uint32_t yodaBlinkStarted = 0;
+uint32_t nextYodaBlink = 0;
+bool yodaBlinking = false;
+TouchButton feedButton, playButton, sleepButton;
 
 void drawCentered(const char *text, int16_t y, uint8_t font, uint16_t color) {
   tft.setTextFont(font);
@@ -113,8 +125,26 @@ void drawStartButton(bool pressed, const char *label = "START") {
   tft.drawCentreString(label, x + startButton.w / 2, y + 12, 4);
 }
 
-void drawSplash() {
-  gameState = SPLASH;
+void drawMenuButton(const TouchButton &button, const char *label, uint16_t fill) {
+  tft.fillRoundRect(button.x + 3, button.y + 4, button.w, button.h, 12, TFT_BLACK);
+  tft.fillRoundRect(button.x, button.y, button.w, button.h, 12, COLOR_PINK);
+  tft.fillRoundRect(button.x + 3, button.y + 3, button.w - 6, button.h - 6, 9, fill);
+  tft.setTextColor(TFT_WHITE, fill);
+  tft.setTextFont(4);
+  tft.drawCentreString(label, button.x + button.w / 2, button.y + 10, 4);
+}
+
+void drawBackButton(const TouchButton &button, uint8_t font = 2) {
+  tft.fillRoundRect(button.x, button.y, button.w, button.h, 8, COLOR_PURPLE);
+  tft.drawRoundRect(button.x, button.y, button.w, button.h, 8, TFT_WHITE);
+  tft.setTextFont(font);
+  tft.setTextColor(TFT_WHITE, COLOR_PURPLE);
+  tft.drawCentreString("BACK", button.x + button.w / 2,
+                       button.y + (font == 4 ? 12 : 7), font);
+}
+
+void drawHomeMenu() {
+  gameState = HOME_MENU;
   buttonWasPressed = false;
   tft.fillScreen(COLOR_SKY);
   drawStars();
@@ -130,8 +160,21 @@ void drawSplash() {
   tft.setFreeFont(NULL);
 
   tft.drawFastHLine(75, 145, 170, COLOR_MINT);
-  drawCentered("TOUCH TO PLAY", 151, 2, TFT_WHITE);
-  drawStartButton(false);
+  drawCentered("READY TO PLAY?", 151, 2, TFT_WHITE);
+  drawMenuButton(chooseGameButton, "CHOOSE GAME", COLOR_PURPLE);
+}
+
+void drawGameList() {
+  gameState = GAME_LIST;
+  buttonWasPressed = false;
+  backButton = {8, 6, 60, 25};
+  tft.fillScreen(COLOR_SKY);
+  drawStars();
+  drawBackButton(backButton);
+  drawCentered("GAME LIST", 43, 4, COLOR_GOLD);
+  drawCentered("PICK ONE TO PLAY", 78, 2, TFT_WHITE);
+  drawMenuButton(saucerMenuButton, "SPACE SAUCER", COLOR_PURPLE);
+  drawMenuButton(yodaMenuButton, "BABY YODA", 0x2585);
 }
 
 void respawnSaucer(Saucer &saucer) {
@@ -194,12 +237,15 @@ void beginGame() {
 void showResults() {
   gameState = RESULTS;
   buttonWasPressed = false;
+  startButton = {170, 181, 140, 48};
+  backButton = {10, 181, 140, 48};
   tft.fillScreen(COLOR_SKY);
   drawStars();
   drawCentered("TIME'S UP!", 54, 4, COLOR_PINK);
   drawCentered("SAUCERS DOWN", 95, 2, TFT_WHITE);
   drawCentered(String(score).c_str(), 116, 6, COLOR_GOLD);
   drawStartButton(false, "AGAIN");
+  drawBackButton(backButton, 4);
 }
 
 void updateGame(uint32_t now, bool tapped, uint16_t touchX, uint16_t touchY) {
@@ -240,14 +286,147 @@ void updateGame(uint32_t now, bool tapped, uint16_t touchX, uint16_t touchY) {
   drawGame(elapsed);
 }
 
+uint8_t increaseNeed(uint8_t value, uint8_t amount) {
+  return min(100, value + amount);
+}
+
+uint8_t decreaseNeed(uint8_t value, uint32_t amount) {
+  return amount >= value ? 0 : value - amount;
+}
+
+void drawNeedBar(const char *label, int16_t y, uint8_t value, uint16_t color) {
+  tft.setTextFont(2);
+  tft.setTextColor(TFT_WHITE, COLOR_SKY);
+  tft.drawString(label, 10, y, 2);
+  tft.drawRoundRect(82, y + 1, 225, 13, 6, TFT_WHITE);
+  tft.fillRoundRect(85, y + 4, (217 * value) / 100, 7, 3, color);
+}
+
+void drawYoda(bool blinking) {
+  const int16_t x = tft.width() / 2;
+  const int16_t y = 132;
+  const uint16_t green = 0x7E8B;
+  const uint16_t greenShadow = 0x34C5;
+  const uint16_t earInner = 0xE3B4;
+  const uint16_t robe = 0xC618;
+  const uint16_t robeShadow = 0x9CD3;
+
+  // Layered ears, eyes, and robe give the small pet more depth at CYD resolution.
+  tft.fillTriangle(x - 33, y - 20, x - 82, y - 5, x - 38, y + 7, greenShadow);
+  tft.fillTriangle(x + 33, y - 20, x + 82, y - 5, x + 38, y + 7, greenShadow);
+  tft.fillTriangle(x - 37, y - 15, x - 70, y - 5, x - 38, y + 2, earInner);
+  tft.fillTriangle(x + 37, y - 15, x + 70, y - 5, x + 38, y + 2, earInner);
+  tft.fillEllipse(x, y, 45, 39, green);
+  tft.drawEllipse(x, y, 45, 39, TFT_WHITE);
+  tft.fillEllipse(x, y + 30, 33, 10, greenShadow);
+
+  // Forehead creases and a tiny nose make the face feel less like a simple icon.
+  tft.drawLine(x - 18, y - 22, x - 10, y - 16, greenShadow);
+  tft.drawLine(x + 18, y - 22, x + 10, y - 16, greenShadow);
+  tft.fillCircle(x, y + 8, 3, greenShadow);
+  tft.drawLine(x - 7, y + 17, x, y + 19, TFT_BLACK);
+  tft.drawLine(x, y + 19, x + 7, y + 17, TFT_BLACK);
+
+  if (blinking) {
+    tft.drawFastHLine(x - 23, y - 4, 15, TFT_BLACK);
+    tft.drawFastHLine(x + 8, y - 4, 15, TFT_BLACK);
+  } else {
+    tft.fillEllipse(x - 16, y - 4, 8, 11, TFT_BLACK);
+    tft.fillEllipse(x + 16, y - 4, 8, 11, TFT_BLACK);
+    tft.fillCircle(x - 14, y - 8, 2, TFT_WHITE);
+    tft.fillCircle(x + 18, y - 8, 2, TFT_WHITE);
+  }
+
+  tft.fillRoundRect(x - 45, y + 32, 91, 32, 13, robeShadow);
+  tft.fillRoundRect(x - 39, y + 34, 79, 29, 12, robe);
+  tft.drawRoundRect(x - 39, y + 34, 79, 29, 12, TFT_WHITE);
+  tft.fillTriangle(x - 22, y + 34, x, y + 55, x - 2, y + 34, TFT_WHITE);
+  tft.fillCircle(x - 39, y + 52, 6, green);
+  tft.fillCircle(x + 39, y + 52, 6, green);
+}
+
+void drawPetButton(const TouchButton &button, const char *label, uint16_t fill) {
+  tft.fillRoundRect(button.x, button.y, button.w, button.h, 8, fill);
+  tft.drawRoundRect(button.x, button.y, button.w, button.h, 8, TFT_WHITE);
+  tft.setTextFont(2);
+  tft.setTextColor(TFT_WHITE, fill);
+  tft.drawCentreString(label, button.x + button.w / 2, button.y + 10, 2);
+}
+
+void drawYodaGame() {
+  tft.fillScreen(COLOR_SKY);
+  drawBackButton(backButton);
+  drawCentered("RAISE BABY YODA", 6, 4, COLOR_GOLD);
+  drawNeedBar("FOOD", 37, yodaHunger, COLOR_GOLD);
+  drawNeedBar("FUN", 55, yodaHappiness, COLOR_PINK);
+  drawNeedBar("REST", 73, yodaEnergy, COLOR_MINT);
+  drawYoda(yodaBlinking);
+  drawPetButton(feedButton, "FEED", COLOR_PURPLE);
+  drawPetButton(playButton, "PLAY", COLOR_PINK);
+  drawPetButton(sleepButton, "SLEEP", 0x2585);
+}
+
+void beginYodaGame() {
+  gameState = YODA_PLAYING;
+  backButton = {8, 6, 60, 25};
+  yodaHunger = 78;
+  yodaHappiness = 78;
+  yodaEnergy = 78;
+  lastYodaNeedUpdate = millis();
+  yodaBlinking = false;
+  nextYodaBlink = lastYodaNeedUpdate + random(1800, 4200);
+  drawYodaGame();
+}
+
+void updateYodaGame(uint32_t now, bool tapped, uint16_t touchX, uint16_t touchY) {
+  if (tapped && backButton.contains(touchX, touchY)) {
+    drawGameList();
+    return;
+  }
+
+  bool redrawForBlink = false;
+  if (!yodaBlinking && (int32_t)(now - nextYodaBlink) >= 0) {
+    yodaBlinking = true;
+    yodaBlinkStarted = now;
+    redrawForBlink = true;
+  } else if (yodaBlinking && now - yodaBlinkStarted >= 150) {
+    yodaBlinking = false;
+    nextYodaBlink = now + random(1800, 4200);
+    redrawForBlink = true;
+  }
+  if (redrawForBlink) drawYodaGame();
+
+  if (now - lastYodaNeedUpdate >= 5000) {
+    const uint32_t intervals = (now - lastYodaNeedUpdate) / 5000;
+    yodaHunger = decreaseNeed(yodaHunger, 4UL * intervals);
+    yodaHappiness = decreaseNeed(yodaHappiness, 3UL * intervals);
+    yodaEnergy = decreaseNeed(yodaEnergy, 2UL * intervals);
+    lastYodaNeedUpdate += intervals * 5000;
+    drawYodaGame();
+  }
+
+  if (!tapped) return;
+  if (feedButton.contains(touchX, touchY)) yodaHunger = increaseNeed(yodaHunger, 18);
+  else if (playButton.contains(touchX, touchY)) {
+    yodaHappiness = increaseNeed(yodaHappiness, 18);
+    yodaEnergy = yodaEnergy > 7 ? yodaEnergy - 7 : 0;
+  } else if (sleepButton.contains(touchX, touchY)) yodaEnergy = increaseNeed(yodaEnergy, 22);
+  else return;
+  drawYodaGame();
+}
+
 bool readTouch(uint16_t &x, uint16_t &y) {
   if (!touch.touched()) return false;
 
   TS_Point point = touch.getPoint();
+  // The calibration touches are inset from the bezel, so preserve that inset
+  // in the mapping. Mapping them to (0, 0) shifts upper-left taps outward.
   long screenX = map(point.x, touchCalibration.topLeftX,
-                     touchCalibration.bottomRightX, 0, tft.width() - 1);
+                     touchCalibration.bottomRightX, CALIBRATION_INSET,
+                     tft.width() - 1 - CALIBRATION_INSET);
   long screenY = map(point.y, touchCalibration.topLeftY,
-                     touchCalibration.bottomRightY, 0, tft.height() - 1);
+                     touchCalibration.bottomRightY, CALIBRATION_INSET,
+                     tft.height() - 1 - CALIBRATION_INSET);
   x = constrain(screenX, 0, tft.width() - 1);
   y = constrain(screenY, 0, tft.height() - 1);
   return true;
@@ -271,7 +450,7 @@ TS_Point waitForCalibrationTouch() {
 void touchCalibrate() {
   bool valid = false;
   if (SPIFFS.begin(true)) {
-    File file = SPIFFS.open("/AuggieTouchCal_v4", "r");
+    File file = SPIFFS.open("/AuggieTouchCal_v5", "r");
     valid = file && file.readBytes((char *)&touchCalibration, sizeof(touchCalibration)) == sizeof(touchCalibration);
     if (file) file.close();
     valid = valid && touchCalibration.magic == CALIBRATION_MAGIC &&
@@ -283,19 +462,20 @@ void touchCalibrate() {
   tft.fillScreen(TFT_BLACK);
   drawCentered("TOUCH CALIBRATION", 68, 2, COLOR_GOLD);
   drawCentered("Touch each crosshair", 94, 2, TFT_WHITE);
-  drawCalibrationTarget(18, 18);
+  drawCalibrationTarget(CALIBRATION_INSET, CALIBRATION_INSET);
   TS_Point topLeft = waitForCalibrationTouch();
 
   tft.fillScreen(TFT_BLACK);
   drawCentered("TOUCH CALIBRATION", 68, 2, COLOR_GOLD);
   drawCentered("Touch each crosshair", 94, 2, TFT_WHITE);
-  drawCalibrationTarget(tft.width() - 19, tft.height() - 19);
+  drawCalibrationTarget(tft.width() - 1 - CALIBRATION_INSET,
+                        tft.height() - 1 - CALIBRATION_INSET);
   TS_Point bottomRight = waitForCalibrationTouch();
 
   touchCalibration = {CALIBRATION_MAGIC,
                       static_cast<uint16_t>(topLeft.x), static_cast<uint16_t>(topLeft.y),
                       static_cast<uint16_t>(bottomRight.x), static_cast<uint16_t>(bottomRight.y)};
-  File file = SPIFFS.open("/AuggieTouchCal_v4", "w");
+  File file = SPIFFS.open("/AuggieTouchCal_v5", "w");
   if (file) {
     file.write((const uint8_t *)&touchCalibration, sizeof(touchCalibration));
     file.close();
@@ -317,8 +497,15 @@ void setup() {
   touch.setRotation(1);
   randomSeed(micros());
   startButton = {(int16_t)((tft.width() - 190) / 2), 181, 190, 48};
+  chooseGameButton = {(int16_t)((tft.width() - 190) / 2), 181, 190, 48};
+  saucerMenuButton = {(int16_t)((tft.width() - 230) / 2), 142, 230, 36};
+  yodaMenuButton = {(int16_t)((tft.width() - 230) / 2), 185, 230, 36};
+  backButton = {8, 6, 60, 25};
+  feedButton = {10, 197, 92, 34};
+  playButton = {114, 197, 92, 34};
+  sleepButton = {218, 197, 92, 34};
   touchCalibrate();
-  drawSplash();
+  drawHomeMenu();
 }
 
 void loop() {
@@ -327,9 +514,17 @@ void loop() {
   const bool tapped = touching && !touchWasDown;
   const uint32_t now = millis();
 
-  if (gameState == SPLASH || gameState == RESULTS) {
-    const char *label = gameState == SPLASH ? "START" : "AGAIN";
-    if (touching && startButton.contains(x, y)) {
+  if (gameState == HOME_MENU) {
+    if (tapped && chooseGameButton.contains(x, y)) drawGameList();
+  } else if (gameState == GAME_LIST) {
+    if (tapped && backButton.contains(x, y)) drawHomeMenu();
+    else if (tapped && saucerMenuButton.contains(x, y)) beginGame();
+    else if (tapped && yodaMenuButton.contains(x, y)) beginYodaGame();
+  } else if (gameState == RESULTS) {
+    const char *label = "AGAIN";
+    if (tapped && backButton.contains(x, y)) {
+      drawGameList();
+    } else if (touching && startButton.contains(x, y)) {
       if (!buttonWasPressed) {
         buttonWasPressed = true;
         drawStartButton(true, label);
@@ -342,8 +537,10 @@ void loop() {
       buttonWasPressed = false;
       drawStartButton(false, label);
     }
-  } else {
+  } else if (gameState == PLAYING) {
     updateGame(now, tapped, x, y);
+  } else {
+    updateYodaGame(now, tapped, x, y);
   }
 
   touchWasDown = touching;
