@@ -42,9 +42,9 @@ struct TouchButton {
   bool contains(uint16_t tx, uint16_t ty) const {
     return tx >= x && tx < x + w && ty >= y && ty < y + h;
   }
-} startButton, chooseGameButton, saucerMenuButton, yodaMenuButton, backButton;
+} startButton, chooseGameButton, saucerMenuButton, yodaMenuButton, driveMenuButton, backButton;
 
-enum GameState { HOME_MENU, GAME_LIST, PLAYING, RESULTS, YODA_PLAYING };
+enum GameState { HOME_MENU, GAME_LIST, PLAYING, RESULTS, YODA_PLAYING, CITY_DRIVING };
 GameState gameState = HOME_MENU;
 bool buttonWasPressed = false;
 bool touchWasDown = false;
@@ -175,6 +175,7 @@ void drawGameList() {
   drawCentered("PICK ONE TO PLAY", 78, 2, TFT_WHITE);
   drawMenuButton(saucerMenuButton, "SPACE SAUCER", COLOR_PURPLE);
   drawMenuButton(yodaMenuButton, "BABY YODA", 0x2585);
+  drawMenuButton(driveMenuButton, "CITY DRIVE", 0x0357);
 }
 
 void respawnSaucer(Saucer &saucer) {
@@ -482,6 +483,8 @@ void touchCalibrate() {
   }
 }
 
+#include "include/CityDrive.h"
+
 void setup() {
   Serial.begin(115200);
   tft.init();
@@ -498,8 +501,9 @@ void setup() {
   randomSeed(micros());
   startButton = {(int16_t)((tft.width() - 190) / 2), 181, 190, 48};
   chooseGameButton = {(int16_t)((tft.width() - 190) / 2), 181, 190, 48};
-  saucerMenuButton = {(int16_t)((tft.width() - 230) / 2), 142, 230, 36};
-  yodaMenuButton = {(int16_t)((tft.width() - 230) / 2), 185, 230, 36};
+  saucerMenuButton = {(int16_t)((tft.width() - 230) / 2), 102, 230, 36};
+  yodaMenuButton = {(int16_t)((tft.width() - 230) / 2), 145, 230, 36};
+  driveMenuButton = {45, 188, 230, 36};
   backButton = {8, 6, 60, 25};
   feedButton = {10, 197, 92, 34};
   playButton = {114, 197, 92, 34};
@@ -509,7 +513,7 @@ void setup() {
 }
 
 void loop() {
-  uint16_t x, y;
+  uint16_t x = 0, y = 0;
   const bool touching = readTouch(x, y);
   const bool tapped = touching && !touchWasDown;
   const uint32_t now = millis();
@@ -520,6 +524,7 @@ void loop() {
     if (tapped && backButton.contains(x, y)) drawHomeMenu();
     else if (tapped && saucerMenuButton.contains(x, y)) beginGame();
     else if (tapped && yodaMenuButton.contains(x, y)) beginYodaGame();
+    else if (tapped && driveMenuButton.contains(x, y)) beginCityDrive();
   } else if (gameState == RESULTS) {
     const char *label = "AGAIN";
     if (tapped && backButton.contains(x, y)) {
@@ -539,6 +544,8 @@ void loop() {
     }
   } else if (gameState == PLAYING) {
     updateGame(now, tapped, x, y);
+  } else if (gameState == CITY_DRIVING) {
+    updateCityDrive(now, touching, tapped, x, y);
   } else {
     updateYodaGame(now, tapped, x, y);
   }
