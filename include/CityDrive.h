@@ -1,4 +1,5 @@
 #pragma once
+#include "GameAudio.h"
 #include <math.h>
 
 // A small pseudo-3D renderer: world coordinates project toward a fixed horizon.
@@ -117,6 +118,8 @@ void render(bool touching, uint16_t tx, uint16_t ty) {
 } // namespace CityDrive
 
 void beginCityDrive() {
+  GameAudio::stop();
+  GameAudio::play(GameAudio::Start);
   using namespace CityDrive;
   gameState=CITY_DRIVING;
   position=playerX=speed=distance=invulnerable=0;
@@ -150,9 +153,10 @@ void updateCityDrive(uint32_t now, bool touching, bool tapped, uint16_t x, uint1
     float oldZ=c.z;
     c.z+=(c.speed-speed)*dt;
     if(invulnerable<=0 && c.z<5.2f && oldZ>2.0f && fabsf(c.x-playerX)<1.5f) {
+      GameAudio::play(GameAudio::Crash);
       ++damage; speed*=0.3f; invulnerable=1.6f;
       resetTraffic(i,100+i*9);
-      if(damage>=3) finished=true;
+      if(damage>=3) { finished=true; GameAudio::play(GameAudio::Lose); }
     } else if(c.z<2) { ++passed; resetTraffic(i,100+i*9); }
     else if(c.z>170) resetTraffic(i,100+i*9);
   }

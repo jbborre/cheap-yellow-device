@@ -6,6 +6,7 @@
 #include <TFT_eSPI.h>
 #include <XPT2046_Touchscreen.h>
 #include "Free_Fonts.h"
+#include "include/GameAudio.h"
 
 TFT_eSPI tft;
 TFT_eSprite gameFrame(&tft);
@@ -42,9 +43,9 @@ struct TouchButton {
   bool contains(uint16_t tx, uint16_t ty) const {
     return tx >= x && tx < x + w && ty >= y && ty < y + h;
   }
-} startButton, chooseGameButton, saucerMenuButton, yodaMenuButton, driveMenuButton, backButton;
+} startButton, chooseGameButton, saucerMenuButton, yodaMenuButton, driveMenuButton, zombieMenuButton, backButton;
 
-enum GameState { HOME_MENU, GAME_LIST, PLAYING, RESULTS, YODA_PLAYING, CITY_DRIVING };
+enum GameState { HOME_MENU, GAME_LIST, PLAYING, RESULTS, YODA_PLAYING, CITY_DRIVING, ZOMBIE_CRASH };
 GameState gameState = HOME_MENU;
 bool buttonWasPressed = false;
 bool touchWasDown = false;
@@ -144,6 +145,7 @@ void drawBackButton(const TouchButton &button, uint8_t font = 2) {
 }
 
 void drawHomeMenu() {
+  GameAudio::stop();
   gameState = HOME_MENU;
   buttonWasPressed = false;
   tft.fillScreen(COLOR_SKY);
@@ -162,20 +164,29 @@ void drawHomeMenu() {
   tft.drawFastHLine(75, 145, 170, COLOR_MINT);
   drawCentered("READY TO PLAY?", 151, 2, TFT_WHITE);
   drawMenuButton(chooseGameButton, "CHOOSE GAME", COLOR_PURPLE);
+  tft.fillRoundRect(5,5,110,26,5,COLOR_PURPLE);
+  tft.setTextColor(TFT_WHITE,COLOR_PURPLE);
+  tft.drawCentreString("TEST SOUND",60,10,2);
+  tft.fillRoundRect(215,5,100,26,5,COLOR_PURPLE);
+  tft.setTextColor(TFT_WHITE,COLOR_PURPLE);
+  tft.drawCentreString(GameAudio::enabled ? "SOUND: ON" : "SOUND: OFF",265,10,2);
 }
 
 void drawGameList() {
+  GameAudio::stop();
+  GameAudio::play(GameAudio::Click);
   gameState = GAME_LIST;
   buttonWasPressed = false;
   backButton = {8, 6, 60, 25};
   tft.fillScreen(COLOR_SKY);
   drawStars();
   drawBackButton(backButton);
-  drawCentered("GAME LIST", 43, 4, COLOR_GOLD);
-  drawCentered("PICK ONE TO PLAY", 78, 2, TFT_WHITE);
+  drawCentered("GAME LIST", 34, 4, COLOR_GOLD);
+  drawCentered("PICK ONE TO PLAY", 61, 2, TFT_WHITE);
   drawMenuButton(saucerMenuButton, "SPACE SAUCER", COLOR_PURPLE);
   drawMenuButton(yodaMenuButton, "BABY YODA", 0x2585);
   drawMenuButton(driveMenuButton, "CITY DRIVE", 0x0357);
+  drawMenuButton(zombieMenuButton, "ZOMBIE CRASH", 0x8208);
 }
 
 void respawnSaucer(Saucer &saucer) {
@@ -228,6 +239,8 @@ void drawGame(uint32_t elapsed) {
 }
 
 void beginGame() {
+  GameAudio::stop();
+  GameAudio::play(GameAudio::Start);
   gameState = PLAYING;
   score = 0;
   levelStarted = millis();
@@ -236,6 +249,7 @@ void beginGame() {
 }
 
 void showResults() {
+  GameAudio::play(GameAudio::Win);
   gameState = RESULTS;
   buttonWasPressed = false;
   startButton = {170, 181, 140, 48};
@@ -257,11 +271,13 @@ void updateGame(uint32_t now, bool tapped, uint16_t touchX, uint16_t touchY) {
   }
 
   if (tapped) {
+    GameAudio::play(GameAudio::Shot);
     for (Saucer &saucer : saucers) {
       if (saucer.exploding) continue;
       const float dx = touchX - saucer.x;
       const float dy = (touchY - saucer.y) * 2.0f;
       if (dx * dx + dy * dy <= saucer.radius * saucer.radius) {
+        GameAudio::play(saucer.hitsLeft==1 ? GameAudio::Pop : GameAudio::Hit);
         if (--saucer.hitsLeft == 0) {
           score++;
           saucer.exploding = true;
@@ -368,6 +384,8 @@ void drawYodaGame() {
 }
 
 void beginYodaGame() {
+  GameAudio::stop();
+  GameAudio::play(GameAudio::Start);
   gameState = YODA_PLAYING;
   backButton = {8, 6, 60, 25};
   yodaHunger = 78;
@@ -407,11 +425,18 @@ void updateYodaGame(uint32_t now, bool tapped, uint16_t touchX, uint16_t touchY)
   }
 
   if (!tapped) return;
-  if (feedButton.contains(touchX, touchY)) yodaHunger = increaseNeed(yodaHunger, 18);
+  if (feedButton.contains(touchX, touchY)) {
+    yodaHunger = increaseNeed(yodaHunger, 18);
+    GameAudio::play(GameAudio::Feed);
+  }
   else if (playButton.contains(touchX, touchY)) {
+    GameAudio::play(GameAudio::Happy);
     yodaHappiness = increaseNeed(yodaHappiness, 18);
     yodaEnergy = yodaEnergy > 7 ? yodaEnergy - 7 : 0;
-  } else if (sleepButton.contains(touchX, touchY)) yodaEnergy = increaseNeed(yodaEnergy, 22);
+  } else if (sleepButton.contains(touchX, touchY)) {
+    yodaEnergy = increaseNeed(yodaEnergy, 22);
+    GameAudio::play(GameAudio::Sleep);
+  }
   else return;
   drawYodaGame();
 }
@@ -484,6 +509,7 @@ void touchCalibrate() {
 }
 
 #include "include/CityDrive.h"
+#include "include/ZombieCrash.h"
 
 void setup() {
   Serial.begin(115200);
@@ -501,15 +527,18 @@ void setup() {
   randomSeed(micros());
   startButton = {(int16_t)((tft.width() - 190) / 2), 181, 190, 48};
   chooseGameButton = {(int16_t)((tft.width() - 190) / 2), 181, 190, 48};
-  saucerMenuButton = {(int16_t)((tft.width() - 230) / 2), 102, 230, 36};
-  yodaMenuButton = {(int16_t)((tft.width() - 230) / 2), 145, 230, 36};
-  driveMenuButton = {45, 188, 230, 36};
+  saucerMenuButton = {45, 81, 230, 33};
+  yodaMenuButton = {45, 120, 230, 33};
+  driveMenuButton = {45, 159, 230, 33};
+  zombieMenuButton = {45, 198, 230, 33};
   backButton = {8, 6, 60, 25};
   feedButton = {10, 197, 92, 34};
   playButton = {114, 197, 92, 34};
   sleepButton = {218, 197, 92, 34};
   touchCalibrate();
+  GameAudio::begin();
   drawHomeMenu();
+  GameAudio::play(GameAudio::Test);
 }
 
 void loop() {
@@ -519,12 +548,29 @@ void loop() {
   const uint32_t now = millis();
 
   if (gameState == HOME_MENU) {
-    if (tapped && chooseGameButton.contains(x, y)) drawGameList();
+    if (tapped && x>=5 && x<115 && y>=5 && y<31) {
+      GameAudio::setEnabled(true);
+      tft.fillRect(0,145,320,31,COLOR_SKY);
+      drawCentered("TESTING SPEAKER...",151,2,COLOR_GOLD);
+      bool audioTestOk=GameAudio::testDirectDac();
+      drawHomeMenu();
+      if (!audioTestOk) {
+        tft.fillRect(0,145,320,31,COLOR_SKY);
+        drawCentered("AUDIO ERROR - CHECK SERIAL",151,2,COLOR_PINK);
+      }
+    }
+    else if (tapped && x>=215 && x<315 && y>=5 && y<31) {
+      GameAudio::setEnabled(!GameAudio::enabled);
+      drawHomeMenu();
+      GameAudio::play(GameAudio::Click);
+    }
+    else if (tapped && chooseGameButton.contains(x, y)) drawGameList();
   } else if (gameState == GAME_LIST) {
     if (tapped && backButton.contains(x, y)) drawHomeMenu();
     else if (tapped && saucerMenuButton.contains(x, y)) beginGame();
     else if (tapped && yodaMenuButton.contains(x, y)) beginYodaGame();
     else if (tapped && driveMenuButton.contains(x, y)) beginCityDrive();
+    else if (tapped && zombieMenuButton.contains(x, y)) beginZombieCrash();
   } else if (gameState == RESULTS) {
     const char *label = "AGAIN";
     if (tapped && backButton.contains(x, y)) {
@@ -546,10 +592,14 @@ void loop() {
     updateGame(now, tapped, x, y);
   } else if (gameState == CITY_DRIVING) {
     updateCityDrive(now, touching, tapped, x, y);
+  } else if (gameState == ZOMBIE_CRASH) {
+    updateZombieCrash(now, touching, tapped, x, y);
   } else {
     updateYodaGame(now, tapped, x, y);
   }
 
+  GameAudio::engine(gameState==CITY_DRIVING && !CityDrive::finished ? CityDrive::speed : 0);
+  GameAudio::update(millis());
   touchWasDown = touching;
   delay(10);
 }
