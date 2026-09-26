@@ -6,6 +6,11 @@
 #include <soc/rtc.h>
 #endif
 
+// Set to -1 for boards without an amplifier enable pin.
+#ifndef AUDIO_ENABLE_PIN
+#define AUDIO_ENABLE_PIN 4 // LCDWIKI ESP32-32E: LOW enables the amplifier.
+#endif
+
 // CYD speaker amplifier input: DAC2 / GPIO26. Never enable DAC1 (GPIO25),
 // which this project uses as the touchscreen clock. Hardware generates the
 // waveform; update() only schedules notes, without delays or sample buffers.
@@ -29,6 +34,14 @@ Effect current=Click;
 uint32_t started=0;
 uint16_t engineHz=0, outputHz=0;
 
+void enableAmplifier(bool on) {
+#ifndef GAME_AUDIO_HOST_TEST
+#if AUDIO_ENABLE_PIN >= 0
+  digitalWrite(AUDIO_ENABLE_PIN,on ? LOW : HIGH);
+#endif
+#endif
+}
+
 void output(uint16_t hz) {
   if (!ready || hz==outputHz) return;
 #ifndef GAME_AUDIO_HOST_TEST
@@ -50,6 +63,7 @@ void output(uint16_t hz) {
       Serial.printf("Audio tone failed: %s\n",esp_err_to_name(error));
       dac_cw_generator_disable();
       dac_output_voltage(DAC_CHANNEL_2,128);
+      enableAmplifier(false);
       ready=false; outputHz=0;
       return;
     }
@@ -59,6 +73,10 @@ void output(uint16_t hz) {
 }
 void begin() {
 #ifndef GAME_AUDIO_HOST_TEST
+#if AUDIO_ENABLE_PIN >= 0
+  digitalWrite(AUDIO_ENABLE_PIN,HIGH);
+  pinMode(AUDIO_ENABLE_PIN,OUTPUT);
+#endif
   // The legacy CW driver configures the DAC but does not enable its 8 MHz
   // source clock. Preserve the divided clock state used by other peripherals.
   rtc_clk_8m_enable(true,rtc_clk_8md256_enabled());
@@ -73,18 +91,21 @@ void begin() {
 #else
   ready=true;
 #endif
+  enableAmplifier(ready && enabled);
 }
 void stop() { playing=false; engineHz=0; output(0); }
 // Deliberately independent of the CW generator and note scheduler. This
 // short, blocking diagnostic runs only from TEST SOUND, never during a game.
 bool testDirectDac() {
   stop();
+  if (!enabled) return false;
 #ifndef GAME_AUDIO_HOST_TEST
   esp_err_t error=dac_output_enable(DAC_CHANNEL_2);
   if (error!=ESP_OK) {
     Serial.printf("Direct DAC test failed: %s\n",esp_err_to_name(error));
     return false;
   }
+  enableAmplifier(enabled);
   dac_cw_generator_disable();
   const uint16_t frequencies[]={440,660,880};
   for (uint16_t hz : frequencies) {
@@ -107,7 +128,11 @@ bool testDirectDac() {
 #endif
   return ready;
 }
-void setEnabled(bool value) { enabled=value; if (!enabled) stop(); }
+void setEnabled(bool value) {
+  enabled=value;
+  if (!enabled) stop();
+  enableAmplifier(enabled && ready);
+}
 void update(uint32_t now) {
   if (!enabled || !ready) { output(0); return; }
   if (playing) {

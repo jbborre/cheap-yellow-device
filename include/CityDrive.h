@@ -15,7 +15,10 @@ float invulnerable = 0;
 uint32_t lastFrame = 0;
 int damage = 0, passed = 0;
 bool finished = false;
-const TouchButton pad = {8, 194, 304, 42};
+const TouchButton leftButton = {6, 194, 57, 42};
+const TouchButton rightButton = {69, 194, 57, 42};
+const TouchButton brakeButton = {190, 194, 59, 42};
+const TouchButton gasButton = {255, 194, 59, 42};
 const TouchButton exitButton = {5, 4, 52, 26};
 const TouchButton retryButton = {90, 133, 140, 38};
 
@@ -56,6 +59,15 @@ void building(float x, float z, int index) {
       for (int wx=max(0,a+3); wx<min(320,b-2); wx+=step)
         gameFrame.fillRect(wx,wy,max(1,step/2),2,0xFFE9);
   }
+}
+void controlButton(const TouchButton &button, const char *label, uint16_t color,
+                   bool touching, uint16_t x, uint16_t y) {
+  bool held=touching && button.contains(x,y);
+  uint16_t fill=held ? color : 0x1928;
+  gameFrame.fillRoundRect(button.x,button.y,button.w,button.h,6,fill);
+  gameFrame.drawRoundRect(button.x,button.y,button.w,button.h,6,held ? TFT_WHITE : color);
+  gameFrame.setTextColor(TFT_WHITE,fill);
+  gameFrame.drawCentreString(label,button.x+button.w/2,button.y+13,2);
 }
 void render(bool touching, uint16_t tx, uint16_t ty) {
   gameFrame.fillSprite(0x8E7D);
@@ -98,11 +110,11 @@ void render(bool touching, uint16_t tx, uint16_t ty) {
   char hud[64];
   snprintf(hud,sizeof(hud),"%d km/h  %dm  %d/3",(int)(speed*3.6f),(int)distance,damage);
   gameFrame.drawRightString(hud,315,9,2);
-  gameFrame.fillRoundRect(pad.x,pad.y,pad.w,pad.h,6,0x1928);
-  gameFrame.setTextColor(TFT_WHITE,0x1928);
-  gameFrame.drawCentreString("< STEER    UP: GAS    STEER >",160,197,2);
-  gameFrame.drawCentreString("DOWN: BRAKE / RELEASE: COAST",160,216,1);
-  if(touching && pad.contains(tx,ty)) gameFrame.drawCircle(tx,ty,8,COLOR_GOLD);
+  gameFrame.fillRect(0,190,320,50,0x1084);
+  controlButton(leftButton,"<",COLOR_MINT,touching,tx,ty);
+  controlButton(rightButton,">",COLOR_MINT,touching,tx,ty);
+  controlButton(brakeButton,"BRAKE",TFT_RED,touching,tx,ty);
+  controlButton(gasButton,"GAS",0x05A0,touching,tx,ty);
   if(finished) {
     gameFrame.fillRoundRect(35,67,250,108,10,0x1084);
     gameFrame.setTextColor(COLOR_GOLD,0x1084);
@@ -139,10 +151,13 @@ void updateCityDrive(uint32_t now, bool touching, bool tapped, uint16_t x, uint1
   if(now-lastFrame<33) return;
   float dt=min(0.1f,(now-lastFrame)/1000.0f); lastFrame=now;
   float steering=0, acceleration=-2.0f;
-  if(touching && pad.contains(x,y)) {
-    steering=constrain(((float)x-160)/115,-1.0f,1.0f);
-    acceleration=y<215 ? 9.0f : -18.0f;
+  if(touching) {
+    if(leftButton.contains(x,y)) steering=-1;
+    else if(rightButton.contains(x,y)) steering=1;
+    else if(gasButton.contains(x,y)) acceleration=9.0f;
+    else if(brakeButton.contains(x,y)) acceleration=-18.0f;
   }
+  // Single-touch screen: the car coasts while the player switches to steering.
   speed=constrain(speed+acceleration*dt,0.0f,30.0f);
   playerX=constrain(playerX+steering*dt*(1.0f+speed*0.12f),-4.6f,4.6f);
   distance+=speed*dt;

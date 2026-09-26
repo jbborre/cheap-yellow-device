@@ -1,5 +1,7 @@
 // Auggie's Game - game menu and Space Saucer game for the ESP32 Cheap Yellow Display.
 #include <Arduino.h>
+#include <esp_sleep.h>
+#include <driver/gpio.h>
 #include <FS.h>
 #include <SPIFFS.h>
 #include <SPI.h>
@@ -164,9 +166,6 @@ void drawHomeMenu() {
   tft.drawFastHLine(75, 145, 170, COLOR_MINT);
   drawCentered("READY TO PLAY?", 151, 2, TFT_WHITE);
   drawMenuButton(chooseGameButton, "CHOOSE GAME", COLOR_PURPLE);
-  tft.fillRoundRect(5,5,110,26,5,COLOR_PURPLE);
-  tft.setTextColor(TFT_WHITE,COLOR_PURPLE);
-  tft.drawCentreString("TEST SOUND",60,10,2);
   tft.fillRoundRect(215,5,100,26,5,COLOR_PURPLE);
   tft.setTextColor(TFT_WHITE,COLOR_PURPLE);
   tft.drawCentreString(GameAudio::enabled ? "SOUND: ON" : "SOUND: OFF",265,10,2);
@@ -312,15 +311,15 @@ uint8_t decreaseNeed(uint8_t value, uint32_t amount) {
 }
 
 void drawNeedBar(const char *label, int16_t y, uint8_t value, uint16_t color) {
-  tft.setTextFont(2);
-  tft.setTextColor(TFT_WHITE, COLOR_SKY);
-  tft.drawString(label, 10, y, 2);
-  tft.drawRoundRect(82, y + 1, 225, 13, 6, TFT_WHITE);
-  tft.fillRoundRect(85, y + 4, (217 * value) / 100, 7, 3, color);
+  gameFrame.setTextFont(2);
+  gameFrame.setTextColor(TFT_WHITE, COLOR_SKY);
+  gameFrame.drawString(label, 10, y, 2);
+  gameFrame.drawRoundRect(82, y + 1, 225, 13, 6, TFT_WHITE);
+  gameFrame.fillRoundRect(85, y + 4, (217 * value) / 100, 7, 3, color);
 }
 
 void drawYoda(bool blinking) {
-  const int16_t x = tft.width() / 2;
+  const int16_t x = gameFrame.width() / 2;
   const int16_t y = 132;
   const uint16_t green = 0x7E8B;
   const uint16_t greenShadow = 0x34C5;
@@ -329,51 +328,55 @@ void drawYoda(bool blinking) {
   const uint16_t robeShadow = 0x9CD3;
 
   // Layered ears, eyes, and robe give the small pet more depth at CYD resolution.
-  tft.fillTriangle(x - 33, y - 20, x - 82, y - 5, x - 38, y + 7, greenShadow);
-  tft.fillTriangle(x + 33, y - 20, x + 82, y - 5, x + 38, y + 7, greenShadow);
-  tft.fillTriangle(x - 37, y - 15, x - 70, y - 5, x - 38, y + 2, earInner);
-  tft.fillTriangle(x + 37, y - 15, x + 70, y - 5, x + 38, y + 2, earInner);
-  tft.fillEllipse(x, y, 45, 39, green);
-  tft.drawEllipse(x, y, 45, 39, TFT_WHITE);
-  tft.fillEllipse(x, y + 30, 33, 10, greenShadow);
+  gameFrame.fillTriangle(x - 33, y - 20, x - 82, y - 5, x - 38, y + 7, greenShadow);
+  gameFrame.fillTriangle(x + 33, y - 20, x + 82, y - 5, x + 38, y + 7, greenShadow);
+  gameFrame.fillTriangle(x - 37, y - 15, x - 70, y - 5, x - 38, y + 2, earInner);
+  gameFrame.fillTriangle(x + 37, y - 15, x + 70, y - 5, x + 38, y + 2, earInner);
+  gameFrame.fillEllipse(x, y, 45, 39, green);
+  gameFrame.drawEllipse(x, y, 45, 39, TFT_WHITE);
+  gameFrame.fillEllipse(x, y + 30, 33, 10, greenShadow);
 
   // Forehead creases and a tiny nose make the face feel less like a simple icon.
-  tft.drawLine(x - 18, y - 22, x - 10, y - 16, greenShadow);
-  tft.drawLine(x + 18, y - 22, x + 10, y - 16, greenShadow);
-  tft.fillCircle(x, y + 8, 3, greenShadow);
-  tft.drawLine(x - 7, y + 17, x, y + 19, TFT_BLACK);
-  tft.drawLine(x, y + 19, x + 7, y + 17, TFT_BLACK);
+  gameFrame.drawLine(x - 18, y - 22, x - 10, y - 16, greenShadow);
+  gameFrame.drawLine(x + 18, y - 22, x + 10, y - 16, greenShadow);
+  gameFrame.fillCircle(x, y + 8, 3, greenShadow);
+  gameFrame.drawLine(x - 7, y + 17, x, y + 19, TFT_BLACK);
+  gameFrame.drawLine(x, y + 19, x + 7, y + 17, TFT_BLACK);
 
   if (blinking) {
-    tft.drawFastHLine(x - 23, y - 4, 15, TFT_BLACK);
-    tft.drawFastHLine(x + 8, y - 4, 15, TFT_BLACK);
+    gameFrame.drawFastHLine(x - 23, y - 4, 15, TFT_BLACK);
+    gameFrame.drawFastHLine(x + 8, y - 4, 15, TFT_BLACK);
   } else {
-    tft.fillEllipse(x - 16, y - 4, 8, 11, TFT_BLACK);
-    tft.fillEllipse(x + 16, y - 4, 8, 11, TFT_BLACK);
-    tft.fillCircle(x - 14, y - 8, 2, TFT_WHITE);
-    tft.fillCircle(x + 18, y - 8, 2, TFT_WHITE);
+    gameFrame.fillEllipse(x - 16, y - 4, 8, 11, TFT_BLACK);
+    gameFrame.fillEllipse(x + 16, y - 4, 8, 11, TFT_BLACK);
+    gameFrame.fillCircle(x - 14, y - 8, 2, TFT_WHITE);
+    gameFrame.fillCircle(x + 18, y - 8, 2, TFT_WHITE);
   }
 
-  tft.fillRoundRect(x - 45, y + 32, 91, 32, 13, robeShadow);
-  tft.fillRoundRect(x - 39, y + 34, 79, 29, 12, robe);
-  tft.drawRoundRect(x - 39, y + 34, 79, 29, 12, TFT_WHITE);
-  tft.fillTriangle(x - 22, y + 34, x, y + 55, x - 2, y + 34, TFT_WHITE);
-  tft.fillCircle(x - 39, y + 52, 6, green);
-  tft.fillCircle(x + 39, y + 52, 6, green);
+  gameFrame.fillRoundRect(x - 45, y + 32, 91, 32, 13, robeShadow);
+  gameFrame.fillRoundRect(x - 39, y + 34, 79, 29, 12, robe);
+  gameFrame.drawRoundRect(x - 39, y + 34, 79, 29, 12, TFT_WHITE);
+  gameFrame.fillTriangle(x - 22, y + 34, x, y + 55, x - 2, y + 34, TFT_WHITE);
+  gameFrame.fillCircle(x - 39, y + 52, 6, green);
+  gameFrame.fillCircle(x + 39, y + 52, 6, green);
 }
 
 void drawPetButton(const TouchButton &button, const char *label, uint16_t fill) {
-  tft.fillRoundRect(button.x, button.y, button.w, button.h, 8, fill);
-  tft.drawRoundRect(button.x, button.y, button.w, button.h, 8, TFT_WHITE);
-  tft.setTextFont(2);
-  tft.setTextColor(TFT_WHITE, fill);
-  tft.drawCentreString(label, button.x + button.w / 2, button.y + 10, 2);
+  gameFrame.fillRoundRect(button.x, button.y, button.w, button.h, 8, fill);
+  gameFrame.drawRoundRect(button.x, button.y, button.w, button.h, 8, TFT_WHITE);
+  gameFrame.setTextFont(2);
+  gameFrame.setTextColor(TFT_WHITE, fill);
+  gameFrame.drawCentreString(label, button.x + button.w / 2, button.y + 10, 2);
 }
 
 void drawYodaGame() {
-  tft.fillScreen(COLOR_SKY);
-  drawBackButton(backButton);
-  drawCentered("RAISE BABY YODA", 6, 4, COLOR_GOLD);
+  gameFrame.fillSprite(COLOR_SKY);
+  gameFrame.fillRoundRect(backButton.x,backButton.y,backButton.w,backButton.h,8,COLOR_PURPLE);
+  gameFrame.drawRoundRect(backButton.x,backButton.y,backButton.w,backButton.h,8,TFT_WHITE);
+  gameFrame.setTextColor(TFT_WHITE,COLOR_PURPLE);
+  gameFrame.drawCentreString("BACK",backButton.x+backButton.w/2,backButton.y+7,2);
+  gameFrame.setTextColor(COLOR_GOLD,COLOR_SKY);
+  gameFrame.drawCentreString("RAISE BABY YODA",194,9,2);
   drawNeedBar("FOOD", 37, yodaHunger, COLOR_GOLD);
   drawNeedBar("FUN", 55, yodaHappiness, COLOR_PINK);
   drawNeedBar("REST", 73, yodaEnergy, COLOR_MINT);
@@ -381,6 +384,7 @@ void drawYodaGame() {
   drawPetButton(feedButton, "FEED", COLOR_PURPLE);
   drawPetButton(playButton, "PLAY", COLOR_PINK);
   drawPetButton(sleepButton, "SLEEP", 0x2585);
+  gameFrame.pushSprite(0,0);
 }
 
 void beginYodaGame() {
@@ -403,17 +407,16 @@ void updateYodaGame(uint32_t now, bool tapped, uint16_t touchX, uint16_t touchY)
     return;
   }
 
-  bool redrawForBlink = false;
+  bool redraw = false;
   if (!yodaBlinking && (int32_t)(now - nextYodaBlink) >= 0) {
     yodaBlinking = true;
     yodaBlinkStarted = now;
-    redrawForBlink = true;
+    redraw = true;
   } else if (yodaBlinking && now - yodaBlinkStarted >= 150) {
     yodaBlinking = false;
     nextYodaBlink = now + random(1800, 4200);
-    redrawForBlink = true;
+    redraw = true;
   }
-  if (redrawForBlink) drawYodaGame();
 
   if (now - lastYodaNeedUpdate >= 5000) {
     const uint32_t intervals = (now - lastYodaNeedUpdate) / 5000;
@@ -421,10 +424,13 @@ void updateYodaGame(uint32_t now, bool tapped, uint16_t touchX, uint16_t touchY)
     yodaHappiness = decreaseNeed(yodaHappiness, 3UL * intervals);
     yodaEnergy = decreaseNeed(yodaEnergy, 2UL * intervals);
     lastYodaNeedUpdate += intervals * 5000;
-    drawYodaGame();
+    redraw=true;
   }
 
-  if (!tapped) return;
+  if (!tapped) {
+    if (redraw) drawYodaGame();
+    return;
+  }
   if (feedButton.contains(touchX, touchY)) {
     yodaHunger = increaseNeed(yodaHunger, 18);
     GameAudio::play(GameAudio::Feed);
@@ -437,7 +443,10 @@ void updateYodaGame(uint32_t now, bool tapped, uint16_t touchX, uint16_t touchY)
     yodaEnergy = increaseNeed(yodaEnergy, 22);
     GameAudio::play(GameAudio::Sleep);
   }
-  else return;
+  else {
+    if (redraw) drawYodaGame();
+    return;
+  }
   drawYodaGame();
 }
 
@@ -511,8 +520,58 @@ void touchCalibrate() {
 #include "include/CityDrive.h"
 #include "include/ZombieCrash.h"
 
+// BOOT is active-low GPIO0. Light sleep retains RAM and the current game.
+constexpr uint8_t BOOT_BUTTON_PIN = 0;
+
+void waitForBootRelease() {
+  uint32_t releasedAt = millis();
+  while (millis() - releasedAt < 40) {
+    if (digitalRead(BOOT_BUTTON_PIN) == LOW) releasedAt = millis();
+    delay(10);
+  }
+}
+
+void sleepFromBootButton() {
+  const uint32_t pausedAt = millis();
+  const bool soundEnabled = GameAudio::enabled;
+  GameAudio::setEnabled(false);
+  digitalWrite(TFT_BL, LOW);
+  tft.writecommand(0x10); // Display sleep-in; display RAM is retained.
+  delay(120);
+  // Do not let the press that requested sleep immediately wake the ESP32.
+  waitForBootRelease();
+  esp_err_t error = gpio_wakeup_enable(GPIO_NUM_0, GPIO_INTR_LOW_LEVEL);
+  if (error == ESP_OK) error = esp_sleep_enable_gpio_wakeup();
+  if (error == ESP_OK) {
+    Serial.flush();
+    error = esp_light_sleep_start();
+  }
+  gpio_wakeup_disable(GPIO_NUM_0);
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
+  // Consume the waking press as well, including switch bounce.
+  waitForBootRelease();
+  tft.writecommand(0x11); // Display sleep-out.
+  delay(120);
+  digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+  GameAudio::setEnabled(soundEnabled);
+
+  const uint32_t pausedFor = millis() - pausedAt;
+  levelStarted += pausedFor;
+  lastGameFrame += pausedFor;
+  for (auto &saucer : saucers) saucer.explosionStarted += pausedFor;
+  lastYodaNeedUpdate += pausedFor;
+  yodaBlinkStarted += pausedFor;
+  nextYodaBlink += pausedFor;
+  CityDrive::lastFrame += pausedFor;
+  ZombieCrash::lastFrame += pausedFor;
+  // A finger left on the screen must not become a new tap on waking.
+  touchWasDown = touch.touched();
+  if (error != ESP_OK) Serial.printf("Sleep failed: %s\n", esp_err_to_name(error));
+}
+
 void setup() {
   Serial.begin(115200);
+  pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
   tft.init();
   tft.setRotation(1); // 320 x 240 landscape
   // 8-bit color keeps the full-screen buffer below 80 KB, leaving ample RAM
@@ -538,28 +597,23 @@ void setup() {
   touchCalibrate();
   GameAudio::begin();
   drawHomeMenu();
-  GameAudio::play(GameAudio::Test);
 }
 
 void loop() {
+  if (digitalRead(BOOT_BUTTON_PIN) == LOW) {
+    delay(30);
+    if (digitalRead(BOOT_BUTTON_PIN) == LOW) {
+      sleepFromBootButton();
+      return;
+    }
+  }
   uint16_t x = 0, y = 0;
   const bool touching = readTouch(x, y);
   const bool tapped = touching && !touchWasDown;
   const uint32_t now = millis();
 
   if (gameState == HOME_MENU) {
-    if (tapped && x>=5 && x<115 && y>=5 && y<31) {
-      GameAudio::setEnabled(true);
-      tft.fillRect(0,145,320,31,COLOR_SKY);
-      drawCentered("TESTING SPEAKER...",151,2,COLOR_GOLD);
-      bool audioTestOk=GameAudio::testDirectDac();
-      drawHomeMenu();
-      if (!audioTestOk) {
-        tft.fillRect(0,145,320,31,COLOR_SKY);
-        drawCentered("AUDIO ERROR - CHECK SERIAL",151,2,COLOR_PINK);
-      }
-    }
-    else if (tapped && x>=215 && x<315 && y>=5 && y<31) {
+    if (tapped && x>=215 && x<315 && y>=5 && y<31) {
       GameAudio::setEnabled(!GameAudio::enabled);
       drawHomeMenu();
       GameAudio::play(GameAudio::Click);
