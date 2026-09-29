@@ -18,7 +18,7 @@ struct Renderer {
 #define DRAW_STUB(name) template<typename... Args> void name(Args...) {}
   DRAW_STUB(fillRoundRect) DRAW_STUB(drawRoundRect) DRAW_STUB(setTextColor)
   DRAW_STUB(drawCentreString) DRAW_STUB(fillEllipse) DRAW_STUB(drawWideLine)
-  DRAW_STUB(fillCircle) DRAW_STUB(fillRect) DRAW_STUB(drawLine)
+  DRAW_STUB(drawCircle) DRAW_STUB(fillCircle) DRAW_STUB(fillRect) DRAW_STUB(drawLine)
   DRAW_STUB(drawFastVLine) DRAW_STUB(fillTriangle) DRAW_STUB(fillSprite)
   DRAW_STUB(drawString) DRAW_STUB(drawRect) DRAW_STUB(drawRightString) DRAW_STUB(pushSprite)
 #undef DRAW_STUB
@@ -120,7 +120,7 @@ int main() {
         step(0.1f,0,false); step(0.1f,0,false);
       }
       assert(bossLife==10-hit*(bow ? 1 : 2));
-      assert(stage==(hit==hits ? VICTORY : ACTIVE_LEVEL));
+      assert(stage==(hit==hits ? LEVEL_COMPLETE : ACTIVE_LEVEL));
     }
   }
   // Melee wind-up can be dodged, and damage coincides with the swipe.
@@ -185,5 +185,48 @@ int main() {
   assert(fired);
   updateZombieCrash(1050,true,true,20,12);
   assert(gameState==1);
+  // Waves relocate even with a stationary camera and deterministic random.
+  startLevel(0,2); camera=2280;
+  raiseSpikeWarnings(); float old[maxSpikes];
+  for(int i=0;i<maxSpikes;++i) old[i]=spikes[i].x;
+  raiseSpikeWarnings();
+  for(int i=0;i<maxSpikes;++i) assert(fabsf(old[i]-spikes[i].x)>40);
+  stage=LEVEL_COMPLETE;
+  updateZombieCrash(7000,true,true,100,140);
+  assert(level==3 && bossLife==15);
+  assert(terrain(180)==ground && terrain(330)==ground-48 && terrain(630)==ground);
+  spawnZombie(400); assert(zombies[0].flying);
+  float high=zombieFeet(zombies[0]); zombies[0].flightPhase=3.14159f;
+  assert(zombieFeet(zombies[0])>high+60);
+  // Armory pauses combat, requires one selection, and precedes the arena.
+  playerX=2041; step(0.01f,0,false);
+  assert(stage==ARMORY && !bossActive);
+  float pausedX=playerX; step(1,1,true); assert(playerX==pausedX);
+  updateZombieCrash(8000,true,true,40,120);
+  assert(stage==ACTIVE_LEVEL && extra==GRENADES && grenades==5 && armoryVisited);
+  updateZombieCrash(8001,true,true,180,210); assert(useExtra);
+  attack(); assert(grenades==4 && thrown[0].active && thrown[0].vy<0);
+  for(int i=0;i<100;++i) updateExtras(0.02f);
+  assert(!thrown[0].active);
+  for(int i=0;i<4;++i) { attackCooldown=0; attack(); }
+  assert(grenades==0); attackCooldown=0; attack(); assert(grenades==0);
+  startLevel(0,3); extra=SPEAR; useExtra=true;
+  attack(); assert(thrown[0].active && !thrown[0].grenade);
+  for(int i=0;i<100;++i) updateExtras(0.02f);
+  attackCooldown=0; attack(); assert(thrown[0].active);
+  startLevel(0,3); extra=DOG; useExtra=true; dogAvailable=true;
+  zombies[0]={playerX+20,0,0,2}; attack(); assert(dogTime==10 && !dogAvailable);
+  updateExtras(0.01f); assert(zombies[0].hp==1);
+  for(int i=0;i<100;++i) updateExtras(0.1f);
+  assert(dogTime==0 && zombies[0].hp==0);
+  attack(); assert(dogTime==0);
+  // Height matters to melee and arrows; high fliers cannot hit the player.
+  startLevel(0,3); bow=false; spawnZombie(playerX+20);
+  zombies[0].rising=0; attack(); assert(zombies[0].hp==2);
+  zombies[0].flightPhase=3.14159f; attackCooldown=0; attack(); assert(zombies[0].hp==0);
+  bossActive=true; hurtBoss(14); assert(bossLife==1 && stage==ACTIVE_LEVEL);
+  hurtBoss(1); assert(stage==VICTORY && crownUnlocked && wearCrown);
+  startLevel(0); assert(crownUnlocked && wearCrown && extra==NONE && dogTime==0);
+  beginZombieCrash(); updateZombieCrash(100,true,true,100,60); assert(!wearCrown);
   puts("Zombie Crash gameplay checks passed");
 }
