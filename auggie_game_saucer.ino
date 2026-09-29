@@ -297,7 +297,8 @@ void updateGame(uint32_t now, bool tapped, uint16_t touchX, uint16_t touchY) {
     }
   }
 
-  const float frameScale = min(now - lastGameFrame, (uint32_t)50) / 25.0f;
+  if (now-lastGameFrame<33) return;
+  const float frameScale = min(now - lastGameFrame, (uint32_t)100) / 25.0f;
   lastGameFrame = now;
   for (Saucer &saucer : saucers) {
     if (saucer.exploding) {
@@ -692,5 +693,6 @@ void loop() {
   GameAudio::engine(gameState==CITY_DRIVING && !CityDrive::finished ? CityDrive::speed : 0);
   GameAudio::update(millis());
   touchWasDown = touching;
-  delay(10);
+  // Yield without adding 10 ms to every completed frame.
+  delay(1);
 }

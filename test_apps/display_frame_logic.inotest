@@ -1,0 +1,75 @@
+// clang++ -std=c++11 -x c++ test_apps/display_frame_logic.inotest -o /tmp/frame-test && /tmp/frame-test
+#include <algorithm>
+#include <cassert>
+#include <cstdio>
+#include <cstdlib>
+#include <cstdint>
+#include <vector>
+#define GAME_DISPLAY_HOST_TEST
+#define GAME_DISPLAY_RENDER_TEST
+constexpr int MALLOC_CAP_DMA=1;
+bool allowDMA=true;
+void *heap_caps_malloc(size_t n,int) { return allowDMA ? malloc(n) : nullptr; }
+void heap_caps_free(void *p) { free(p); }
+struct Logger { template<typename... A> void printf(const char *,A...) {} } Serial;
+struct TFT_eSPI {
+  int w,h,left=0,top=0,ww=0,hh=0,cursor=0,windows=0,writes=0;
+  bool swap=true,writing=false;
+  const uint16_t *pending=nullptr; int pendingSize=0;
+  std::vector<uint16_t> screen;
+  TFT_eSPI(int x,int y):w(x),h(y),screen(x*y,0xABCD) {}
+  int width() { return w; } int height() { return h; }
+  bool getSwapBytes() { return swap; } void setSwapBytes(bool v) { swap=v; }
+  bool initDMA() { return allowDMA; }
+  void startWrite() { assert(!writing); writing=true; }
+  void endWrite() { assert(!pending); writing=false; }
+  void setAddrWindow(int x,int y,int width,int height) {
+    assert(!pending && writing); left=x;top=y;ww=width;hh=height;cursor=0;++windows;
+    assert(x>=0 && y>=0 && x+width<=w && y+height<=h);
+  }
+  void pushPixels(uint16_t *p,int n) {
+    assert(writing && !swap);
+    for (int i=0;i<n;++i) {
+      assert(cursor<ww*hh);
+      screen[(top+cursor/ww)*w+left+cursor%ww]=p[i]; ++cursor; ++writes;
+    }
+  }
+  void pushPixelsDMA(uint16_t *p,int n) { assert(!pending);pending=p;pendingSize=n; }
+  void dmaWait() {
+    if(pending) { pushPixels(const_cast<uint16_t *>(pending),pendingSize); pending=nullptr; }
+  }
+};
+struct TFT_eSprite {
+  std::vector<uint8_t> pixels;
+  TFT_eSprite(TFT_eSPI *):pixels(320*240) {}
+  void *getPointer() { return pixels.data(); }
+  void pushSprite(int32_t,int32_t) { assert(false); }
+};
+#include "../include/GameDisplay.h"
+void verify(TFT_eSPI &panel,GameDisplay::Frame &frame) {
+  for(int y=0;y<panel.h;++y) for(int x=0;x<panel.w;++x) {
+    uint8_t c=frame.pixels[(y*240/panel.h)*320+x*320/panel.w];
+    assert(panel.screen[y*panel.w+x]==GameDisplay::wireColor(c));
+  }
+  assert(!panel.pending && !panel.writing && panel.swap);
+}
+int main() {
+  assert(GameDisplay::wireColor(0)==0);
+  assert(GameDisplay::wireColor(255)==0xFFFF);
+  assert(GameDisplay::wireColor(0xE0)==0x00F8); // red, wire byte order
+  for (bool dma:{false,true}) for(int w:{320,480}) {
+    allowDMA=dma; TFT_eSPI panel(w,w==480 ? 320 : 240); GameDisplay::Frame frame(&panel);
+    for(int i=0;i<320*240;++i) frame.pixels[i]=(i*37)%256;
+    frame.pushSprite(0,0); verify(panel,frame);
+    assert(panel.windows==30 && panel.writes==panel.w*panel.h);
+    panel.windows=panel.writes=0;
+    frame.pushSprite(0,0); verify(panel,frame); assert(panel.writes==0);
+    // Old position, new position, adjacent band boundary, and bottom-right edge.
+    for(int i:{0,319,7*320+15,8*320+16,120*320+150,320*240-1}) frame.pixels[i]^=0xFF;
+    frame.pushSprite(0,0); verify(panel,frame);
+    assert(panel.windows==4 && panel.writes<panel.w*panel.h/4);
+    frame.invalidate(); panel.windows=panel.writes=0;
+    frame.pushSprite(0,0); verify(panel,frame); assert(panel.writes==panel.w*panel.h);
+  }
+  puts("Frame transfer checks passed (DMA and synchronous, both resolutions)");
+}
