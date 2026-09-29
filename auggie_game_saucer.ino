@@ -9,21 +9,26 @@
 #include <XPT2046_Touchscreen.h>
 #include "Free_Fonts.h"
 #include "include/GameAudio.h"
+#include "include/GameDisplay.h"
 
 TFT_eSPI tft;
-TFT_eSprite gameFrame(&tft);
+GameDisplay::Frame gameFrame(&tft);
 
-// The CYD's XPT2046 controller is wired to a separate SPI bus from the TFT.
+// LCDWIKI ST7796 boards share display SPI; the original CYD uses separate SPI.
 constexpr uint8_t TOUCH_CS = 33;
 constexpr uint8_t TOUCH_IRQ = 36;
+#ifndef GAME_TOUCH_SHARED_SPI
 constexpr uint8_t TOUCH_MOSI = 32;
 constexpr uint8_t TOUCH_MISO = 39;
 constexpr uint8_t TOUCH_SCLK = 25;
+#endif
 // Bump this when a fresh saved touch calibration is needed on the device.
-constexpr uint32_t CALIBRATION_MAGIC = 0x41554735; // "AUG5"
+constexpr uint32_t CALIBRATION_MAGIC = 0x41554736; // "AUG6": includes physical panel dimensions
 constexpr int16_t CALIBRATION_INSET = 18;
 
+#ifndef GAME_TOUCH_SHARED_SPI
 SPIClass touchSPI(VSPI);
+#endif
 XPT2046_Touchscreen touch(TOUCH_CS, TOUCH_IRQ);
 
 const uint16_t COLOR_SKY = 0x0015;
@@ -37,6 +42,8 @@ struct TouchCalibration {
   uint16_t topLeftY;
   uint16_t bottomRightX;
   uint16_t bottomRightY;
+  uint16_t panelWidth;
+  uint16_t panelHeight;
 } touchCalibration;
 
 struct TouchButton {
@@ -77,14 +84,14 @@ bool yodaBlinking = false;
 TouchButton feedButton, playButton, sleepButton;
 
 void drawCentered(const char *text, int16_t y, uint8_t font, uint16_t color) {
-  tft.setTextFont(font);
-  tft.setTextColor(color, COLOR_SKY);
-  tft.drawCentreString(text, tft.width() / 2, y, font);
+  gameFrame.setTextFont(font);
+  gameFrame.setTextColor(color, COLOR_SKY);
+  gameFrame.drawCentreString(text, gameFrame.width() / 2, y, font);
 }
 
 void drawFreeCentered(const char *text, int16_t y, uint16_t color) {
-  tft.setTextColor(color);
-  tft.drawString(text, (tft.width() - tft.textWidth(text)) / 2, y);
+  gameFrame.setTextColor(color);
+  gameFrame.drawString(text, (gameFrame.width() - gameFrame.textWidth(text)) / 2, y);
 }
 
 void drawStars() {
@@ -96,7 +103,7 @@ void drawStars() {
     {22, 126, 1}, {51, 151, 1}, {281, 130, 1}, {304, 154, 1}, {13, 205, 2}
   };
   for (const auto &star : stars) {
-    tft.fillCircle(star[0], star[1], star[2], star[2] == 2 ? COLOR_MINT : TFT_WHITE);
+    gameFrame.fillCircle(star[0], star[1], star[2], star[2] == 2 ? COLOR_MINT : TFT_WHITE);
   }
 }
 
@@ -117,32 +124,32 @@ void drawStartButton(bool pressed, const char *label = "START") {
   const int16_t x = startButton.x;
   const int16_t y = startButton.y;
 
-  tft.fillRoundRect(x + 3, y + 4, startButton.w, startButton.h, 14, TFT_BLACK);
-  tft.fillRoundRect(x, y, startButton.w, startButton.h, 14, edge);
-  tft.fillRoundRect(x + 3, y + 3, startButton.w - 6, startButton.h - 6, 11, fill);
+  gameFrame.fillRoundRect(x + 3, y + 4, startButton.w, startButton.h, 14, TFT_BLACK);
+  gameFrame.fillRoundRect(x, y, startButton.w, startButton.h, 14, edge);
+  gameFrame.fillRoundRect(x + 3, y + 3, startButton.w - 6, startButton.h - 6, 11, fill);
 
-  tft.setTextFont(4);
-  tft.setTextColor(TFT_BLACK, fill);
-  tft.drawCentreString(label, x + startButton.w / 2 + 1, y + 14, 4);
-  tft.setTextColor(TFT_WHITE, fill);
-  tft.drawCentreString(label, x + startButton.w / 2, y + 12, 4);
+  gameFrame.setTextFont(4);
+  gameFrame.setTextColor(TFT_BLACK, fill);
+  gameFrame.drawCentreString(label, x + startButton.w / 2 + 1, y + 14, 4);
+  gameFrame.setTextColor(TFT_WHITE, fill);
+  gameFrame.drawCentreString(label, x + startButton.w / 2, y + 12, 4);
 }
 
 void drawMenuButton(const TouchButton &button, const char *label, uint16_t fill) {
-  tft.fillRoundRect(button.x + 3, button.y + 4, button.w, button.h, 12, TFT_BLACK);
-  tft.fillRoundRect(button.x, button.y, button.w, button.h, 12, COLOR_PINK);
-  tft.fillRoundRect(button.x + 3, button.y + 3, button.w - 6, button.h - 6, 9, fill);
-  tft.setTextColor(TFT_WHITE, fill);
-  tft.setTextFont(4);
-  tft.drawCentreString(label, button.x + button.w / 2, button.y + 10, 4);
+  gameFrame.fillRoundRect(button.x + 3, button.y + 4, button.w, button.h, 12, TFT_BLACK);
+  gameFrame.fillRoundRect(button.x, button.y, button.w, button.h, 12, COLOR_PINK);
+  gameFrame.fillRoundRect(button.x + 3, button.y + 3, button.w - 6, button.h - 6, 9, fill);
+  gameFrame.setTextColor(TFT_WHITE, fill);
+  gameFrame.setTextFont(4);
+  gameFrame.drawCentreString(label, button.x + button.w / 2, button.y + 10, 4);
 }
 
 void drawBackButton(const TouchButton &button, uint8_t font = 2) {
-  tft.fillRoundRect(button.x, button.y, button.w, button.h, 8, COLOR_PURPLE);
-  tft.drawRoundRect(button.x, button.y, button.w, button.h, 8, TFT_WHITE);
-  tft.setTextFont(font);
-  tft.setTextColor(TFT_WHITE, COLOR_PURPLE);
-  tft.drawCentreString("BACK", button.x + button.w / 2,
+  gameFrame.fillRoundRect(button.x, button.y, button.w, button.h, 8, COLOR_PURPLE);
+  gameFrame.drawRoundRect(button.x, button.y, button.w, button.h, 8, TFT_WHITE);
+  gameFrame.setTextFont(font);
+  gameFrame.setTextColor(TFT_WHITE, COLOR_PURPLE);
+  gameFrame.drawCentreString("BACK", button.x + button.w / 2,
                        button.y + (font == 4 ? 12 : 7), font);
 }
 
@@ -150,25 +157,26 @@ void drawHomeMenu() {
   GameAudio::stop();
   gameState = HOME_MENU;
   buttonWasPressed = false;
-  tft.fillScreen(COLOR_SKY);
+  gameFrame.fillSprite(COLOR_SKY);
   drawStars();
 
   // Layered, offset lettering gives the title a neon arcade look.
-  tft.setFreeFont(FSSBO18);
+  gameFrame.setFreeFont(FSSBO18);
   drawFreeCentered("AUGGIE'S", 52, TFT_BLACK);
   drawFreeCentered("AUGGIE'S", 49, COLOR_PINK);
 
-  tft.setFreeFont(FSSBO24);
+  gameFrame.setFreeFont(FSSBO24);
   drawFreeCentered("GAME", 96, TFT_BLACK);
   drawFreeCentered("GAME", 92, COLOR_GOLD);
-  tft.setFreeFont(NULL);
+  gameFrame.setFreeFont(NULL);
 
-  tft.drawFastHLine(75, 145, 170, COLOR_MINT);
+  gameFrame.drawFastHLine(75, 145, 170, COLOR_MINT);
   drawCentered("READY TO PLAY?", 151, 2, TFT_WHITE);
   drawMenuButton(chooseGameButton, "CHOOSE GAME", COLOR_PURPLE);
-  tft.fillRoundRect(215,5,100,26,5,COLOR_PURPLE);
-  tft.setTextColor(TFT_WHITE,COLOR_PURPLE);
-  tft.drawCentreString(GameAudio::enabled ? "SOUND: ON" : "SOUND: OFF",265,10,2);
+  gameFrame.fillRoundRect(215,5,100,26,5,COLOR_PURPLE);
+  gameFrame.setTextColor(TFT_WHITE,COLOR_PURPLE);
+  gameFrame.drawCentreString(GameAudio::enabled ? "SOUND: ON" : "SOUND: OFF",265,10,2);
+  gameFrame.pushSprite(0,0);
 }
 
 void drawGameList() {
@@ -177,7 +185,7 @@ void drawGameList() {
   gameState = GAME_LIST;
   buttonWasPressed = false;
   backButton = {8, 6, 60, 25};
-  tft.fillScreen(COLOR_SKY);
+  gameFrame.fillSprite(COLOR_SKY);
   drawStars();
   drawBackButton(backButton);
   drawCentered("GAME LIST", 34, 4, COLOR_GOLD);
@@ -186,14 +194,15 @@ void drawGameList() {
   drawMenuButton(yodaMenuButton, "BABY YODA", 0x2585);
   drawMenuButton(driveMenuButton, "CITY DRIVE", 0x0357);
   drawMenuButton(zombieMenuButton, "ZOMBIE CRASH", 0x8208);
+  gameFrame.pushSprite(0,0);
 }
 
 void respawnSaucer(Saucer &saucer) {
   const bool large = random(0, 3) == 0;
   saucer.radius = large ? 23 : 14;
   saucer.hitsLeft = large ? 2 : 1;
-  saucer.x = random(saucer.radius, tft.width() - saucer.radius);
-  saucer.y = random(43 + saucer.radius, tft.height() - saucer.radius);
+  saucer.x = random(saucer.radius, gameFrame.width() - saucer.radius);
+  saucer.y = random(43 + saucer.radius, gameFrame.height() - saucer.radius);
   const float speed = large ? random(65, 115) / 100.0f : random(100, 270) / 100.0f;
   saucer.vx = (random(0, 2) ? speed : -speed);
   saucer.vy = (random(0, 2) ? speed * 0.70f : -speed * 0.70f);
@@ -231,8 +240,8 @@ void drawGame(uint32_t elapsed) {
   gameFrame.setTextColor(TFT_WHITE, COLOR_SKY);
   gameFrame.drawString("SCORE: " + String(score), 8, 8, 2);
   gameFrame.setTextColor(COLOR_GOLD, COLOR_SKY);
-  gameFrame.drawRightString("TIME: " + String(secondsLeft), tft.width() - 8, 8, 2);
-  gameFrame.drawFastHLine(0, 31, tft.width(), COLOR_PURPLE);
+  gameFrame.drawRightString("TIME: " + String(secondsLeft), gameFrame.width() - 8, 8, 2);
+  gameFrame.drawFastHLine(0, 31, gameFrame.width(), COLOR_PURPLE);
   for (const Saucer &saucer : saucers) drawSaucer(saucer);
   gameFrame.pushSprite(0, 0);
 }
@@ -253,13 +262,14 @@ void showResults() {
   buttonWasPressed = false;
   startButton = {170, 181, 140, 48};
   backButton = {10, 181, 140, 48};
-  tft.fillScreen(COLOR_SKY);
+  gameFrame.fillSprite(COLOR_SKY);
   drawStars();
   drawCentered("TIME'S UP!", 54, 4, COLOR_PINK);
   drawCentered("SAUCERS DOWN", 95, 2, TFT_WHITE);
   drawCentered(String(score).c_str(), 116, 6, COLOR_GOLD);
   drawStartButton(false, "AGAIN");
   drawBackButton(backButton, 4);
+  gameFrame.pushSprite(0,0);
 }
 
 void updateGame(uint32_t now, bool tapped, uint16_t touchX, uint16_t touchY) {
@@ -296,8 +306,8 @@ void updateGame(uint32_t now, bool tapped, uint16_t touchX, uint16_t touchY) {
     }
     saucer.x += saucer.vx * frameScale;
     saucer.y += saucer.vy * frameScale;
-    if (saucer.x < saucer.radius || saucer.x > tft.width() - saucer.radius) saucer.vx = -saucer.vx;
-    if (saucer.y < 38 + saucer.radius || saucer.y > tft.height() - saucer.radius) saucer.vy = -saucer.vy;
+    if (saucer.x < saucer.radius || saucer.x > gameFrame.width() - saucer.radius) saucer.vx = -saucer.vx;
+    if (saucer.y < 38 + saucer.radius || saucer.y > gameFrame.height() - saucer.radius) saucer.vy = -saucer.vy;
   }
   drawGame(elapsed);
 }
@@ -462,8 +472,8 @@ bool readTouch(uint16_t &x, uint16_t &y) {
   long screenY = map(point.y, touchCalibration.topLeftY,
                      touchCalibration.bottomRightY, CALIBRATION_INSET,
                      tft.height() - 1 - CALIBRATION_INSET);
-  x = constrain(screenX, 0, tft.width() - 1);
-  y = constrain(screenY, 0, tft.height() - 1);
+  x = GameDisplay::logicalCoordinate(screenX,tft.width(),GameDisplay::width);
+  y = GameDisplay::logicalCoordinate(screenY,tft.height(),GameDisplay::height);
   return true;
 }
 
@@ -485,32 +495,38 @@ TS_Point waitForCalibrationTouch() {
 void touchCalibrate() {
   bool valid = false;
   if (SPIFFS.begin(true)) {
-    File file = SPIFFS.open("/AuggieTouchCal_v5", "r");
+    File file = SPIFFS.open("/AuggieTouchCal_v6", "r");
     valid = file && file.readBytes((char *)&touchCalibration, sizeof(touchCalibration)) == sizeof(touchCalibration);
     if (file) file.close();
     valid = valid && touchCalibration.magic == CALIBRATION_MAGIC &&
+            touchCalibration.panelWidth == tft.width() && touchCalibration.panelHeight == tft.height() &&
             abs((int)touchCalibration.topLeftX - touchCalibration.bottomRightX) > 1000 &&
             abs((int)touchCalibration.topLeftY - touchCalibration.bottomRightY) > 1000;
   }
   if (valid) return;
 
   tft.fillScreen(TFT_BLACK);
-  drawCentered("TOUCH CALIBRATION", 68, 2, COLOR_GOLD);
-  drawCentered("Touch each crosshair", 94, 2, TFT_WHITE);
+  tft.setTextColor(COLOR_GOLD,TFT_BLACK);
+  tft.drawCentreString("TOUCH CALIBRATION",tft.width()/2,68,2);
+  tft.setTextColor(TFT_WHITE,TFT_BLACK);
+  tft.drawCentreString("Touch each crosshair",tft.width()/2,94,2);
   drawCalibrationTarget(CALIBRATION_INSET, CALIBRATION_INSET);
   TS_Point topLeft = waitForCalibrationTouch();
 
   tft.fillScreen(TFT_BLACK);
-  drawCentered("TOUCH CALIBRATION", 68, 2, COLOR_GOLD);
-  drawCentered("Touch each crosshair", 94, 2, TFT_WHITE);
+  tft.setTextColor(COLOR_GOLD,TFT_BLACK);
+  tft.drawCentreString("TOUCH CALIBRATION",tft.width()/2,68,2);
+  tft.setTextColor(TFT_WHITE,TFT_BLACK);
+  tft.drawCentreString("Touch each crosshair",tft.width()/2,94,2);
   drawCalibrationTarget(tft.width() - 1 - CALIBRATION_INSET,
                         tft.height() - 1 - CALIBRATION_INSET);
   TS_Point bottomRight = waitForCalibrationTouch();
 
   touchCalibration = {CALIBRATION_MAGIC,
                       static_cast<uint16_t>(topLeft.x), static_cast<uint16_t>(topLeft.y),
-                      static_cast<uint16_t>(bottomRight.x), static_cast<uint16_t>(bottomRight.y)};
-  File file = SPIFFS.open("/AuggieTouchCal_v5", "w");
+                      static_cast<uint16_t>(bottomRight.x), static_cast<uint16_t>(bottomRight.y),
+                      static_cast<uint16_t>(tft.width()), static_cast<uint16_t>(tft.height())};
+  File file = SPIFFS.open("/AuggieTouchCal_v6", "w");
   if (file) {
     file.write((const uint8_t *)&touchCalibration, sizeof(touchCalibration));
     file.close();
@@ -572,20 +588,37 @@ void sleepFromBootButton() {
 void setup() {
   Serial.begin(115200);
   pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
+  // Deselect touch before initializing the shared display bus.
+  pinMode(TOUCH_CS, OUTPUT);
+  digitalWrite(TOUCH_CS, HIGH);
+  Serial.printf("Display init: BL=%d, CS=%d, DC=%d, SCLK=%d, MOSI=%d, MISO=%d\n",
+                TFT_BL,TFT_CS,TFT_DC,TFT_SCLK,TFT_MOSI,TFT_MISO);
   tft.init();
-  tft.setRotation(1); // 320 x 240 landscape
+  pinMode(TFT_BL, OUTPUT);
+  digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+  tft.setRotation(1); // ST7796S: 480 x 320 landscape; ILI9341: 320 x 240
   // 8-bit color keeps the full-screen buffer below 80 KB, leaving ample RAM
   // for the ESP32 and ensuring the game level can always allocate its frame.
   gameFrame.setColorDepth(8);
-  if (!gameFrame.createSprite(tft.width(), tft.height())) {
+  if (!gameFrame.createSprite(GameDisplay::width, GameDisplay::height)) {
     Serial.println("Game frame allocation failed");
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_RED,TFT_BLACK);
+    tft.drawString("Game frame allocation failed",10,10,2);
+    while (true) delay(1000);
   }
+#ifdef GAME_TOUCH_SHARED_SPI
+  touch.begin(tft.getSPIinstance());
+  Serial.println("Touch: shared display SPI");
+#else
   touchSPI.begin(TOUCH_SCLK, TOUCH_MISO, TOUCH_MOSI, TOUCH_CS);
   touch.begin(touchSPI);
+  Serial.println("Touch: separate SPI");
+#endif
   touch.setRotation(1);
   randomSeed(micros());
-  startButton = {(int16_t)((tft.width() - 190) / 2), 181, 190, 48};
-  chooseGameButton = {(int16_t)((tft.width() - 190) / 2), 181, 190, 48};
+  startButton = {(int16_t)((GameDisplay::width - 190) / 2), 181, 190, 48};
+  chooseGameButton = {(int16_t)((GameDisplay::width - 190) / 2), 181, 190, 48};
   saucerMenuButton = {45, 81, 230, 33};
   yodaMenuButton = {45, 120, 230, 33};
   driveMenuButton = {45, 159, 230, 33};
@@ -594,9 +627,11 @@ void setup() {
   feedButton = {10, 197, 92, 34};
   playButton = {114, 197, 92, 34};
   sleepButton = {218, 197, 92, 34};
+  Serial.println("Checking touch calibration");
   touchCalibrate();
   GameAudio::begin();
   drawHomeMenu();
+  Serial.println("Home menu ready");
 }
 
 void loop() {
@@ -633,6 +668,7 @@ void loop() {
       if (!buttonWasPressed) {
         buttonWasPressed = true;
         drawStartButton(true, label);
+        gameFrame.pushSprite(0,0);
       }
     } else if (!touching && buttonWasPressed) {
       // Trigger only after a tap that began inside the button is released.
@@ -641,6 +677,7 @@ void loop() {
       // Letting the finger slide away cancels the tap and restores the button.
       buttonWasPressed = false;
       drawStartButton(false, label);
+      gameFrame.pushSprite(0,0);
     }
   } else if (gameState == PLAYING) {
     updateGame(now, tapped, x, y);
