@@ -17,7 +17,7 @@ GameDisplay::Frame gameFrame(&tft);
 // LCDWIKI ST7796 boards share display SPI; the original CYD uses separate SPI.
 constexpr uint8_t TOUCH_CS = 33;
 constexpr uint8_t TOUCH_IRQ = 36;
-#ifndef GAME_TOUCH_SHARED_SPI
+#if !GAME_TOUCH_SHARED_SPI
 constexpr uint8_t TOUCH_MOSI = 32;
 constexpr uint8_t TOUCH_MISO = 39;
 constexpr uint8_t TOUCH_SCLK = 25;
@@ -26,7 +26,7 @@ constexpr uint8_t TOUCH_SCLK = 25;
 constexpr uint32_t CALIBRATION_MAGIC = 0x41554736; // "AUG6": includes physical panel dimensions
 constexpr int16_t CALIBRATION_INSET = 18;
 
-#ifndef GAME_TOUCH_SHARED_SPI
+#if !GAME_TOUCH_SHARED_SPI
 SPIClass touchSPI(VSPI);
 #endif
 XPT2046_Touchscreen touch(TOUCH_CS, TOUCH_IRQ);
@@ -608,7 +608,7 @@ void setup() {
     tft.drawString("Game frame allocation failed",10,10,2);
     while (true) delay(1000);
   }
-#ifdef GAME_TOUCH_SHARED_SPI
+#if GAME_TOUCH_SHARED_SPI
   touch.begin(tft.getSPIinstance());
   Serial.println("Touch: shared display SPI");
 #else

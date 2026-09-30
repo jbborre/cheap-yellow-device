@@ -1,25 +1,40 @@
-# ST7796S display
+# Display build and upload targets
 
-The default PlatformIO environment is `st7796s`, for a 320×480 SPI ST7796S panel on an ESP32. The firmware rotates the panel to 480×320 landscape and scales all menus, games, and touch targets to fill it. The original 320×240 game canvas stays in memory. The renderer compares it with the last displayed frame, skips unchanged regions, and scales changed eight-row bands into two DMA buffers. It does not require PSRAM.
+Choose an environment for the connected board. Both use the same game code; no source edits are needed when switching boards.
 
-Build: `pio run -e st7796s`
+| Display | Environment | Build | Upload |
+| --- | --- | --- | --- |
+| 4-inch ST7796S, 480×320 landscape | `st7796s` | `pio run -e st7796s` | `pio run -e st7796s -t upload` |
+| 2.8-inch ILI9341, 320×240 landscape | `ili9341` | `pio run -e ili9341` | `pio run -e ili9341 -t upload` |
+| Alternate dual-USB 2.8-inch CYD | `cyd2usb` | `pio run -e cyd2usb` | `pio run -e cyd2usb -t upload` |
 
-Upload: `pio run -e st7796s -t upload`
+In VS Code, open **PlatformIO → Project Tasks**, expand the desired environment, and choose **Build** or **Upload**. The default toolbar target is controlled by `default_envs` in `platformio.ini`, currently `st7796s`. Set it to `ili9341` if that is the board you normally use. `cyd` remains an alias for `ili9341`.
+
+If both boards are plugged in, select the destination explicitly, for example:
+
+```sh
+pio run -e ili9341 -t upload --upload-port /dev/cu.usbserial-10
+```
+
+Use the actual port reported by `pio device list`. To compile both primary targets without uploading: `pio run -e st7796s -e ili9341`.
+
+The 320×240 game canvas displays at native size on ILI9341 and scales to fill ST7796S. Rendering and touch coordinates use the selected panel dimensions automatically. Neither target requires PSRAM.
 
 Touch calibration runs on the first boot after this update. Tap both crosshairs. Calibration records the physical screen dimensions and runs again if those dimensions change.
 
 ## Wiring assumptions
 
-ESP32-32E identifies the processor module, not the display board's pinout. The `st7796s` target now uses the [LCDWIKI ESP32-32E pinout](https://www.lcdwiki.com/3.5inch_ESP32-32E_Display#ESP32_Pin_Assignment) and XPT2046 resistive touch controller:
+ESP32-32E identifies the processor module, not the display board's pinout. The profiles use the following wiring with XPT2046 resistive touch:
 
-| Signal | GPIO |
-| --- | --- |
-| Display MOSI / MISO / SCLK | 13 / 12 / 14 |
-| Display CS / DC | 15 / 2 |
-| Display reset | -1 (no GPIO-controlled reset) |
-| Backlight | 27, active high |
-| Touch MOSI / MISO / SCLK | 13 / 12 / 14 (shared display SPI) |
-| Touch CS / IRQ | 33 / 36 |
+| Signal | 4-inch ST7796S | 2.8-inch ILI9341 |
+| --- | --- | --- |
+| Display MOSI / MISO / SCLK | 13 / 12 / 14 | 13 / 12 / 14 |
+| Display CS / DC | 15 / 2 | 15 / 2 |
+| Display reset | -1 (no GPIO reset) | -1 (no GPIO reset) |
+| Backlight, active high | 27 | 21 |
+| Touch MOSI / MISO / SCLK | 13 / 12 / 14 (shared SPI) | 32 / 39 / 25 (separate VSPI) |
+| Touch CS / IRQ | 33 / 36 | 33 / 36 |
+| Display SPI clock | 40 MHz | 55 MHz |
 
 If the board uses different wiring, update the display flags in `platformio.ini` and the touch configuration near the top of `auggie_game_saucer.ino` to match its schematic. A capacitive touch controller needs a different touch implementation. SPI runs at 40 MHz for the ST7796S target.
 
