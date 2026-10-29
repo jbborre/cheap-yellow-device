@@ -30,6 +30,10 @@ const Phrase phrases[] = {
   {{440,660,880,0},500,3,6}
 };
 bool enabled=true, ready=false, playing=false;
+bool toneActive=false;
+uint8_t volume=4; // 0=mute; 1..4 are the DAC amplitude steps.
+uint8_t outputVolume=255;
+int volumePercent() { const int levels[]={0,12,25,50,100}; return levels[volume]; }
 Effect current=Click;
 uint32_t started=0;
 uint16_t engineHz=0, outputHz=0;
@@ -42,26 +46,38 @@ void enableAmplifier(bool on) {
 #endif
 }
 
+// The DAC driver balances clock references on enable/disable.
+void disableTone() {
+#ifndef GAME_AUDIO_HOST_TEST
+  if (toneActive) dac_cw_generator_disable();
+#endif
+  toneActive=false;
+}
+
 void output(uint16_t hz) {
-  if (!ready || hz==outputHz) return;
+  if (!ready || (hz==outputHz && outputVolume==volume)) return;
+  if (!volume) hz=0;
 #ifndef GAME_AUDIO_HOST_TEST
   if (!hz) {
-    dac_cw_generator_disable();
+    disableTone();
     dac_output_voltage(DAC_CHANNEL_2,128);
   } else {
     dac_cw_config_t config={};
     config.en_ch=DAC_CHANNEL_2;
-    config.scale=DAC_CW_SCALE_1; // Full amplitude (4x the previous DAC signal).
+    config.scale=(dac_cw_scale_t)(4-volume); // 1/8, 1/4, 1/2, full amplitude.
     config.phase=DAC_CW_PHASE_0;
     config.freq=hz;
     // IDF 4.4 maps offset==0 to register value -128. Use a small explicit
     // nonzero offset to avoid that special case when generating the waveform.
     config.offset=1;
     esp_err_t error=dac_cw_generator_config(&config);
-    if (error==ESP_OK) error=dac_cw_generator_enable();
+    if (error==ESP_OK && !toneActive) {
+      error=dac_cw_generator_enable();
+      toneActive=error==ESP_OK;
+    }
     if (error!=ESP_OK) {
       Serial.printf("Audio tone failed: %s\n",esp_err_to_name(error));
-      dac_cw_generator_disable();
+      disableTone();
       dac_output_voltage(DAC_CHANNEL_2,128);
       enableAmplifier(false);
       ready=false; outputHz=0;
@@ -70,12 +86,13 @@ void output(uint16_t hz) {
   }
 #endif
   outputHz=hz;
+  outputVolume=volume;
 }
 void begin() {
 #ifndef GAME_AUDIO_HOST_TEST
 #if AUDIO_ENABLE_PIN >= 0
-  digitalWrite(AUDIO_ENABLE_PIN,HIGH);
   pinMode(AUDIO_ENABLE_PIN,OUTPUT);
+  digitalWrite(AUDIO_ENABLE_PIN,HIGH);
 #endif
   // The legacy CW driver configures the DAC but does not enable its 8 MHz
   // source clock. Preserve the divided clock state used by other peripherals.
@@ -83,7 +100,7 @@ void begin() {
   esp_err_t error=dac_output_enable(DAC_CHANNEL_2);
   ready=error==ESP_OK;
   if (ready) {
-    dac_cw_generator_disable();
+    disableTone();
     dac_output_voltage(DAC_CHANNEL_2,128);
   }
   Serial.printf("Audio DAC2/GPIO26: %s, tone clock: %s\n",
@@ -91,7 +108,7 @@ void begin() {
 #else
   ready=true;
 #endif
-  enableAmplifier(ready && enabled);
+  enableAmplifier(ready && enabled && volume>0);
 }
 void stop() { playing=false; engineHz=0; output(0); }
 // Deliberately independent of the CW generator and note scheduler. This
@@ -106,7 +123,7 @@ bool testDirectDac() {
     return false;
   }
   enableAmplifier(enabled);
-  dac_cw_generator_disable();
+  disableTone();
   const uint16_t frequencies[]={440,660,880};
   for (uint16_t hz : frequencies) {
     const uint32_t halfPeriod=500000UL/hz;
@@ -131,10 +148,16 @@ bool testDirectDac() {
 void setEnabled(bool value) {
   enabled=value;
   if (!enabled) stop();
-  enableAmplifier(enabled && ready);
+  enableAmplifier(enabled && ready && volume>0);
+}
+void setVolume(int value) {
+  volume=value<0 ? 0 : value>4 ? 4 : value;
+  if (!volume) stop();
+  else output(outputHz);
+  enableAmplifier(enabled && ready && volume>0);
 }
 void update(uint32_t now) {
-  if (!enabled || !ready) { output(0); return; }
+  if (!enabled || !ready || !volume) { output(0); return; }
   if (playing) {
     const Phrase &p=phrases[current];
     uint32_t note=(uint32_t)(now-started)/p.noteMs;
@@ -144,7 +167,7 @@ void update(uint32_t now) {
   output(engineHz);
 }
 void play(Effect effect) {
-  if (!enabled || !ready) return;
+  if (!enabled || !ready || !volume) return;
   uint32_t now=millis();
   update(now);
   if (playing && phrases[effect].priority<phrases[current].priority) return;

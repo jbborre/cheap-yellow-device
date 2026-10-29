@@ -9,6 +9,8 @@
 #include <XPT2046_Touchscreen.h>
 #include "Free_Fonts.h"
 #include "include/GameAudio.h"
+#include "include/ExpanderButtons.h"
+#include "include/BatteryStatus.h"
 #include "include/GameDisplay.h"
 
 TFT_eSPI tft;
@@ -54,10 +56,17 @@ struct TouchButton {
   }
 } startButton, chooseGameButton, saucerMenuButton, yodaMenuButton, driveMenuButton, zombieMenuButton, backButton;
 
-enum GameState { HOME_MENU, GAME_LIST, PLAYING, RESULTS, YODA_PLAYING, CITY_DRIVING, ZOMBIE_CRASH };
+#include "include/UiNavigation.h"
+
+enum GameState { HOME_MENU, GAME_LIST, PLAYING, RESULTS, YODA_PLAYING, CITY_DRIVING, ZOMBIE_CRASH, SETTINGS };
 GameState gameState = HOME_MENU;
 bool buttonWasPressed = false;
 bool touchWasDown = false;
+const TouchButton settingsButton={5,5,36,30};
+const TouchButton settingsBackButton={8,6,60,25};
+const TouchButton soundToggleButton={55,75,210,42};
+const TouchButton volumeDownButton={45,145,62,44};
+const TouchButton volumeUpButton={213,145,62,44};
 
 constexpr uint8_t SAUCER_COUNT = 5;
 constexpr uint32_t LEVEL_DURATION_MS = 30000;
@@ -153,6 +162,15 @@ void drawBackButton(const TouchButton &button, uint8_t font = 2) {
                        button.y + (font == 4 ? 12 : 7), font);
 }
 
+void drawBatteryBadge() {
+  gameFrame.fillRect(218,5,97,26,COLOR_SKY);
+  gameFrame.setTextColor(BatteryStatus::percentage>=0 && BatteryStatus::percentage<=20 ? COLOR_PINK : COLOR_MINT,COLOR_SKY);
+  char label[20];
+  if (BatteryStatus::percentage<0) snprintf(label,sizeof(label),"BAT --%%");
+  else snprintf(label,sizeof(label),"BAT %d%%",BatteryStatus::percentage);
+  gameFrame.drawRightString(label,314,10,2);
+}
+
 void drawHomeMenu() {
   GameAudio::stop();
   gameState = HOME_MENU;
@@ -173,9 +191,16 @@ void drawHomeMenu() {
   gameFrame.drawFastHLine(75, 145, 170, COLOR_MINT);
   drawCentered("READY TO PLAY?", 151, 2, TFT_WHITE);
   drawMenuButton(chooseGameButton, "CHOOSE GAME", COLOR_PURPLE);
-  gameFrame.fillRoundRect(215,5,100,26,5,COLOR_PURPLE);
-  gameFrame.setTextColor(TFT_WHITE,COLOR_PURPLE);
-  gameFrame.drawCentreString(GameAudio::enabled ? "SOUND: ON" : "SOUND: OFF",265,10,2);
+  gameFrame.fillRoundRect(settingsButton.x,settingsButton.y,settingsButton.w,settingsButton.h,8,COLOR_PURPLE);
+  for (int i=0;i<8;++i) {
+    float angle=i*PI/4;
+    gameFrame.drawWideLine(23+cosf(angle)*8,20+sinf(angle)*8,
+                           23+cosf(angle)*12,20+sinf(angle)*12,4,TFT_WHITE);
+  }
+  gameFrame.fillCircle(23,20,9,TFT_WHITE);
+  gameFrame.fillCircle(23,20,4,COLOR_PURPLE);
+  drawBatteryBadge();
+  UiNavigation::draw();
   gameFrame.pushSprite(0,0);
 }
 
@@ -194,6 +219,7 @@ void drawGameList() {
   drawMenuButton(yodaMenuButton, "BABY YODA", 0x2585);
   drawMenuButton(driveMenuButton, "CITY DRIVE", 0x0357);
   drawMenuButton(zombieMenuButton, "ZOMBIE CRASH", 0x8208);
+  UiNavigation::draw();
   gameFrame.pushSprite(0,0);
 }
 
@@ -256,8 +282,8 @@ void beginGame() {
   for (Saucer &saucer : saucers) respawnSaucer(saucer);
 }
 
-void showResults() {
-  GameAudio::play(GameAudio::Win);
+void showResults(bool announce=true) {
+  if (announce) GameAudio::play(GameAudio::Win);
   gameState = RESULTS;
   buttonWasPressed = false;
   startButton = {170, 181, 140, 48};
@@ -269,6 +295,7 @@ void showResults() {
   drawCentered(String(score).c_str(), 116, 6, COLOR_GOLD);
   drawStartButton(false, "AGAIN");
   drawBackButton(backButton, 4);
+  UiNavigation::draw();
   gameFrame.pushSprite(0,0);
 }
 
@@ -395,6 +422,7 @@ void drawYodaGame() {
   drawPetButton(feedButton, "FEED", COLOR_PURPLE);
   drawPetButton(playButton, "PLAY", COLOR_PINK);
   drawPetButton(sleepButton, "SLEEP", 0x2585);
+  UiNavigation::draw();
   gameFrame.pushSprite(0,0);
 }
 
@@ -473,6 +501,9 @@ bool readTouch(uint16_t &x, uint16_t &y) {
   long screenY = map(point.y, touchCalibration.topLeftY,
                      touchCalibration.bottomRightY, CALIBRATION_INSET,
                      tft.height() - 1 - CALIBRATION_INSET);
+  // Saved calibration describes landscape rotation 1; display now uses 3.
+  screenX = tft.width() - 1 - screenX;
+  screenY = tft.height() - 1 - screenY;
   x = GameDisplay::logicalCoordinate(screenX,tft.width(),GameDisplay::width);
   y = GameDisplay::logicalCoordinate(screenY,tft.height(),GameDisplay::height);
   return true;
@@ -524,8 +555,8 @@ void touchCalibrate() {
   TS_Point bottomRight = waitForCalibrationTouch();
 
   touchCalibration = {CALIBRATION_MAGIC,
-                      static_cast<uint16_t>(topLeft.x), static_cast<uint16_t>(topLeft.y),
                       static_cast<uint16_t>(bottomRight.x), static_cast<uint16_t>(bottomRight.y),
+                      static_cast<uint16_t>(topLeft.x), static_cast<uint16_t>(topLeft.y),
                       static_cast<uint16_t>(tft.width()), static_cast<uint16_t>(tft.height())};
   File file = SPIFFS.open("/AuggieTouchCal_v6", "w");
   if (file) {
@@ -536,6 +567,103 @@ void touchCalibrate() {
 
 #include "include/CityDrive.h"
 #include "include/ZombieCrash.h"
+
+void saveSoundSettings() {
+  Preferences prefs;
+  if (prefs.begin("game-sound",false)) {
+    prefs.putBool("enabled",GameAudio::enabled);
+    prefs.putUChar("volume",GameAudio::volume);
+    prefs.end();
+  }
+}
+void drawSettings() {
+  gameState=SETTINGS;
+  gameFrame.fillSprite(COLOR_SKY);
+  drawBackButton(settingsBackButton);
+  drawCentered("SETTINGS",35,4,COLOR_GOLD);
+  drawMenuButton(soundToggleButton,GameAudio::enabled ? "SOUND: ON" : "SOUND: OFF",COLOR_PURPLE);
+  drawMenuButton(volumeDownButton,"-",0x0357);
+  drawMenuButton(volumeUpButton,"+",0x0357);
+  char label[20];
+  snprintf(label,sizeof(label),"%d%%",GameAudio::volumePercent());
+  drawCentered(label,151,4,COLOR_MINT);
+  drawCentered("VOLUME",124,2,TFT_WHITE);
+  drawCentered("P0/P1: MOVE   P2: SELECT   P3: BACK",215,1,TFT_WHITE);
+  UiNavigation::draw();
+  gameFrame.pushSprite(0,0);
+}
+void beginSettings() { GameAudio::stop(); drawSettings(); }
+void updateSettings(bool tapped,uint16_t x,uint16_t y) {
+  if (!tapped) return;
+  if (settingsBackButton.contains(x,y)) { drawHomeMenu(); return; }
+  if (soundToggleButton.contains(x,y)) GameAudio::setEnabled(!GameAudio::enabled);
+  else if (volumeDownButton.contains(x,y)) GameAudio::setVolume(GameAudio::volume-1);
+  else if (volumeUpButton.contains(x,y)) GameAudio::setVolume(GameAudio::volume+1);
+  else return;
+  saveSoundSettings();
+  GameAudio::play(GameAudio::Click);
+  drawSettings();
+}
+
+// Translate physical menu presses into the same actions as touch selection.
+void navigateUi(uint8_t pressed, bool &touching, bool &tapped, uint16_t &x, uint16_t &y) {
+  const TouchButton *items[5] = {};
+  const TouchButton *back = nullptr;
+  int count = 0, context = (int)gameState * 16;
+  switch (gameState) {
+    case HOME_MENU:
+      items[count++]=&chooseGameButton; items[count++]=&settingsButton; break;
+    case SETTINGS:
+      items[count++]=&soundToggleButton; items[count++]=&volumeDownButton;
+      items[count++]=&volumeUpButton; back=&settingsBackButton; break;
+    case GAME_LIST:
+      items[count++]=&saucerMenuButton; items[count++]=&yodaMenuButton;
+      items[count++]=&driveMenuButton; items[count++]=&zombieMenuButton;
+      back=&backButton; break;
+    case RESULTS:
+      items[count++]=&startButton; items[count++]=&backButton; back=&backButton; break;
+    case YODA_PLAYING:
+      items[count++]=&feedButton; items[count++]=&playButton; items[count++]=&sleepButton;
+      back=&backButton; break;
+    case PLAYING:
+      if (pressed & 8) { drawGameList(); pressed=0; }
+      break;
+    case CITY_DRIVING:
+      if (CityDrive::finished) {
+        context++; items[count++]=&CityDrive::retryButton; back=&CityDrive::exitButton;
+      }
+      break;
+    case ZOMBIE_CRASH:
+      context+=(int)ZombieCrash::stage;
+      if (ZombieCrash::stage==ZombieCrash::CHARACTER_SELECT || ZombieCrash::stage==ZombieCrash::WEAPON_SELECT) {
+        items[count++]=&ZombieCrash::firstChoice; items[count++]=&ZombieCrash::secondChoice;
+        if (ZombieCrash::stage==ZombieCrash::CHARACTER_SELECT && ZombieCrash::crownUnlocked)
+          items[count++]=&ZombieCrash::outfitButton;
+      } else if (ZombieCrash::stage==ZombieCrash::ARMORY) {
+        for (int i=0;i<3;++i) items[count++]=&ZombieCrash::armoryChoices[i];
+      } else if (ZombieCrash::stage!=ZombieCrash::ACTIVE_LEVEL) {
+        items[count++]=&ZombieCrash::retryButton; items[count++]=&ZombieCrash::menuButton;
+      }
+      if (count) back=&ZombieCrash::exitButton;
+      break;
+  }
+  bool redraw=UiNavigation::update(context,items,count,pressed);
+  if (redraw) {
+    if (gameState==HOME_MENU) drawHomeMenu();
+    else if (gameState==SETTINGS) drawSettings();
+    else if (gameState==GAME_LIST) drawGameList();
+    else if (gameState==RESULTS) showResults(false);
+    else if (gameState==YODA_PLAYING) drawYodaGame();
+    else if (gameState==CITY_DRIVING) CityDrive::render(false,0,0);
+    else if (gameState==ZOMBIE_CRASH) ZombieCrash::render(false,0,0,0);
+  }
+  const TouchButton *activate=(pressed & 8) ? back : (pressed & 4) ? UiNavigation::target : nullptr;
+  if (activate) {
+    UiNavigation::visible=false;
+    x=activate->x+activate->w/2; y=activate->y+activate->h/2;
+    touching=tapped=true;
+  }
+}
 
 // BOOT is active-low GPIO0. Light sleep retains RAM and the current game.
 constexpr uint8_t BOOT_BUTTON_PIN = 0;
@@ -597,7 +725,7 @@ void setup() {
   tft.init();
   pinMode(TFT_BL, OUTPUT);
   digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
-  tft.setRotation(1); // ST7796S: 480 x 320 landscape; ILI9341: 320 x 240
+  tft.setRotation(3); // Opposite landscape orientation (180 degrees from rotation 1).
   // 8-bit color keeps the full-screen buffer below 80 KB, leaving ample RAM
   // for the ESP32 and ensuring the game level can always allocate its frame.
   gameFrame.setColorDepth(8);
@@ -616,7 +744,9 @@ void setup() {
   touch.begin(touchSPI);
   Serial.println("Touch: separate SPI");
 #endif
+  // Keep the raw touch coordinate system used by saved calibration.
   touch.setRotation(1);
+  ExpanderButtons::begin();
   randomSeed(micros());
   startButton = {(int16_t)((GameDisplay::width - 190) / 2), 181, 190, 48};
   chooseGameButton = {(int16_t)((GameDisplay::width - 190) / 2), 181, 190, 48};
@@ -630,7 +760,15 @@ void setup() {
   sleepButton = {218, 197, 92, 34};
   Serial.println("Checking touch calibration");
   touchCalibrate();
+  DamageLed::begin();
   GameAudio::begin();
+  Preferences soundPrefs;
+  if (soundPrefs.begin("game-sound",true)) {
+    GameAudio::setVolume(soundPrefs.getUChar("volume",4));
+    GameAudio::setEnabled(soundPrefs.getBool("enabled",true));
+    soundPrefs.end();
+  }
+  BatteryStatus::begin();
   drawHomeMenu();
   Serial.println("Home menu ready");
 }
@@ -644,17 +782,22 @@ void loop() {
     }
   }
   uint16_t x = 0, y = 0;
-  const bool touching = readTouch(x, y);
-  const bool tapped = touching && !touchWasDown;
+  bool touching = readTouch(x, y);
+  bool tapped = touching && !touchWasDown;
   const uint32_t now = millis();
+  ExpanderButtons::update(now);
+  if (BatteryStatus::update(now) && gameState==HOME_MENU) {
+    drawBatteryBadge();
+    gameFrame.pushSprite(0,0);
+  }
+  const bool actualTouching=touching;
+  navigateUi(ExpanderButtons::pressed,touching,tapped,x,y);
 
   if (gameState == HOME_MENU) {
-    if (tapped && x>=215 && x<315 && y>=5 && y<31) {
-      GameAudio::setEnabled(!GameAudio::enabled);
-      drawHomeMenu();
-      GameAudio::play(GameAudio::Click);
-    }
+    if (tapped && settingsButton.contains(x,y)) beginSettings();
     else if (tapped && chooseGameButton.contains(x, y)) drawGameList();
+  } else if (gameState == SETTINGS) {
+    updateSettings(tapped,x,y);
   } else if (gameState == GAME_LIST) {
     if (tapped && backButton.contains(x, y)) drawHomeMenu();
     else if (tapped && saucerMenuButton.contains(x, y)) beginGame();
@@ -669,7 +812,8 @@ void loop() {
       if (!buttonWasPressed) {
         buttonWasPressed = true;
         drawStartButton(true, label);
-        gameFrame.pushSprite(0,0);
+        UiNavigation::draw();
+  gameFrame.pushSprite(0,0);
       }
     } else if (!touching && buttonWasPressed) {
       // Trigger only after a tap that began inside the button is released.
@@ -678,21 +822,23 @@ void loop() {
       // Letting the finger slide away cancels the tap and restores the button.
       buttonWasPressed = false;
       drawStartButton(false, label);
-      gameFrame.pushSprite(0,0);
+      UiNavigation::draw();
+  gameFrame.pushSprite(0,0);
     }
   } else if (gameState == PLAYING) {
     updateGame(now, tapped, x, y);
   } else if (gameState == CITY_DRIVING) {
-    updateCityDrive(now, touching, tapped, x, y);
+    updateCityDrive(now, touching, tapped, x, y, ExpanderButtons::held);
   } else if (gameState == ZOMBIE_CRASH) {
-    updateZombieCrash(now, touching, tapped, x, y);
+    updateZombieCrash(now, touching, tapped, x, y, ExpanderButtons::held, ExpanderButtons::pressed);
   } else {
     updateYodaGame(now, tapped, x, y);
   }
 
   GameAudio::engine(gameState==CITY_DRIVING && !CityDrive::finished ? CityDrive::speed : 0);
   GameAudio::update(millis());
-  touchWasDown = touching;
+  DamageLed::update(millis());
+  touchWasDown = actualTouching;
   // Yield without adding 10 ms to every completed frame.
   delay(1);
 }

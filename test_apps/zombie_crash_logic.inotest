@@ -19,16 +19,19 @@ struct Renderer {
   DRAW_STUB(fillRoundRect) DRAW_STUB(drawRoundRect) DRAW_STUB(setTextColor)
   DRAW_STUB(drawCentreString) DRAW_STUB(fillEllipse) DRAW_STUB(drawWideLine)
   DRAW_STUB(drawCircle) DRAW_STUB(fillCircle) DRAW_STUB(fillRect) DRAW_STUB(drawLine)
-  DRAW_STUB(drawFastVLine) DRAW_STUB(fillTriangle) DRAW_STUB(fillSprite)
+  DRAW_STUB(drawFastHLine) DRAW_STUB(drawFastVLine) DRAW_STUB(fillTriangle) DRAW_STUB(fillSprite)
   DRAW_STUB(drawString) DRAW_STUB(drawRect) DRAW_STUB(drawRightString) DRAW_STUB(pushSprite)
 #undef DRAW_STUB
 } gameFrame;
-constexpr int ZOMBIE_CRASH=6;
+constexpr int ZOMBIE_CRASH=6, CITY_DRIVING=5;
 int gameState=0;
 void drawGameList() { gameState=1; }
 #define GAME_AUDIO_HOST_TEST
+#define DAMAGE_LED_HOST_TEST
 uint32_t millis() { return 0; }
+#include "../include/UiNavigation.h"
 #include "../include/ZombieCrash.h"
+#include "../include/CityDrive.h"
 
 int main() {
   using namespace ZombieCrash;
@@ -42,12 +45,12 @@ int main() {
   updateZombieCrash(30,true,true,200,100);
   assert(stage==ACTIVE_LEVEL && bow && life==5);
   // Hold movement, release to stop, then change direction.
-  updateZombieCrash(100,true,false,100,210);
+  updateZombieCrash(100,false,false,0,0,0x02);
   float moved=playerX;
   assert(moved>60 && facing==1);
   updateZombieCrash(150,false,false,0,0);
   assert(playerX==moved);
-  updateZombieCrash(200,true,false,30,210);
+  updateZombieCrash(200,false,false,0,0,0x01);
   assert(playerX<moved && facing==-1);
   // Sword: one hit kills; a target behind the hero is unharmed.
   startLevel(0); bow=false;
@@ -178,7 +181,7 @@ int main() {
   for(const auto &z:zombies) assert(z.hp==0);
   for(const auto &a:arrows) assert(!a.active);
   // A short tap between frames is queued until the next simulation update.
-  updateZombieCrash(1010,true,true,280,210);
+  updateZombieCrash(1010,false,false,0,0,0x04,0x04);
   updateZombieCrash(1040,false,false,0,0);
   bool fired=false;
   for(const auto &a:arrows) fired=fired || a.active;
@@ -204,7 +207,7 @@ int main() {
   float pausedX=playerX; step(1,1,true); assert(playerX==pausedX);
   updateZombieCrash(8000,true,true,40,120);
   assert(stage==ACTIVE_LEVEL && extra==GRENADES && grenades==5 && armoryVisited);
-  updateZombieCrash(8001,true,true,180,210); assert(useExtra);
+  updateZombieCrash(8001,false,false,0,0,0x08,0x08); assert(useExtra);
   attack(); assert(grenades==4 && thrown[0].active && thrown[0].vy<0);
   for(int i=0;i<100;++i) updateExtras(0.02f);
   assert(!thrown[0].active);
@@ -228,5 +231,52 @@ int main() {
   hurtBoss(1); assert(stage==VICTORY && crownUnlocked && wearCrown);
   startLevel(0); assert(crownUnlocked && wearCrown && extra==NONE && dogTime==0);
   beginZombieCrash(); updateZombieCrash(100,true,true,100,60); assert(!wearCrown);
-  puts("Zombie Crash gameplay checks passed");
+  // Expander controls allow moving and attacking together; switching is an edge.
+  startLevel(0); bow=false;
+  float before=playerX;
+  updateZombieCrash(40,false,false,0,0,0x06,0x06);
+  assert(playerX>before && attackCooldown>0);
+  extra=GRENADES; useExtra=false;
+  updateZombieCrash(80,false,false,0,0,0x08,0x08);
+  assert(useExtra);
+  updateZombieCrash(120,false,false,0,0,0x08,0);
+  assert(useExtra);
+  updateZombieCrash(160,false,false,0,0,0x08,0x08);
+  assert(!useExtra);
+  beginCityDrive();
+  updateCityDrive(100,false,false,0,0,0x05);
+  assert(CityDrive::playerX<0 && CityDrive::speed>0);
+  float oldSpeed=CityDrive::speed, oldX=CityDrive::playerX;
+  updateCityDrive(140,false,false,0,0,0x02);
+  assert(CityDrive::playerX>oldX);
+  updateCityDrive(180,false,false,0,0,0x0C);
+  assert(CityDrive::speed<oldSpeed); // Brake takes priority over gas.
+  // Expanded road view retains a useful lane width and consistent depth.
+  CityDrive::playerX=0;
+  assert(abs(CityDrive::projectY(CityDrive::playerZ)-CityDrive::playerBottom)<=1);
+  int laneWidth=CityDrive::projectX(1.83f,CityDrive::playerZ)-CityDrive::projectX(-1.83f,CityDrive::playerZ);
+  assert(laneWidth>=100 && laneWidth<=120);
+  assert(ZombieCrash::weaponBarY-ZombieCrash::ground>=10);
+  assert(240-ZombieCrash::weaponBarY<=24);
+  // Damage flashes only on accepted hits, including fatal hits.
+  DamageLed::begin();
+  startLevel(0); immunity=0; life=1;
+  hurtPlayer(); assert(DamageLed::active && stage==DEFEAT);
+  DamageLed::update(180); assert(!DamageLed::active);
+  hurtPlayer(); assert(!DamageLed::active);
+  startLevel(0); immunity=1;
+  hurtPlayer(); assert(!DamageLed::active);
+  beginCityDrive(); CityDrive::damage=2;
+  CityDrive::traffic[0].x=0; CityDrive::traffic[0].z=4;
+  updateCityDrive(100,false,false,0,0);
+  assert(CityDrive::finished && DamageLed::active && DamageLed::startedAt==100);
+  DamageLed::update(279); assert(DamageLed::active);
+  DamageLed::update(280); assert(!DamageLed::active);
+  DamageLed::flash(UINT32_MAX-50);
+  DamageLed::update(100); assert(DamageLed::active);
+  DamageLed::update(130); assert(!DamageLed::active);
+  DamageLed::flash(500); DamageLed::flash(600);
+  DamageLed::update(700); assert(DamageLed::active);
+  DamageLed::update(780); assert(!DamageLed::active);
+  puts("Zombie Crash, City Drive and damage LED checks passed");
 }

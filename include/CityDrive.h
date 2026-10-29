@@ -1,5 +1,6 @@
 #pragma once
 #include "GameAudio.h"
+#include "DamageLed.h"
 #include <math.h>
 
 // A small pseudo-3D renderer: world coordinates project toward a fixed horizon.
@@ -8,6 +9,9 @@ namespace CityDrive {
 constexpr int horizon = 63;
 constexpr float focal = 100.0f;
 constexpr float nearZ = 3.0f;
+constexpr float cameraHeight = 5.5f;
+constexpr int playerBottom = 232;
+constexpr float playerZ = cameraHeight*focal/(playerBottom-horizon);
 struct Traffic { float x, z, speed; uint16_t color; };
 Traffic traffic[6];
 float position = 0, playerX = 0, speed = 0, distance = 0;
@@ -23,7 +27,7 @@ const TouchButton exitButton = {5, 4, 52, 26};
 const TouchButton retryButton = {90, 133, 140, 38};
 
 int projectX(float x, float z) { return 160 + (int)((x - playerX * 0.65f) * focal / z); }
-int projectY(float z) { return horizon + (int)(4.0f * focal / z); }
+int projectY(float z) { return horizon + (int)(cameraHeight * focal / z); }
 void quad(int ax, int ay, int bx, int by, int cx, int cy, int dx, int dy, uint16_t color) {
   gameFrame.fillTriangle(ax, ay, bx, by, cx, cy, color);
   gameFrame.fillTriangle(ax, ay, cx, cy, dx, dy, color);
@@ -55,19 +59,10 @@ void building(float x, float z, int index) {
   gameFrame.fillRect(a, top, max(1,b-a), base-top, index%2 ? 0x52D1 : 0x6474);
   if (b-a > 7) {
     int step = max(4,(b-a)/4);
-    for (int wy=max(32,top+4); wy<min(190,base-3); wy+=step+2)
+    for (int wy=max(32,top+4); wy<min(240,base-3); wy+=step+2)
       for (int wx=max(0,a+3); wx<min(320,b-2); wx+=step)
         gameFrame.fillRect(wx,wy,max(1,step/2),2,0xFFE9);
   }
-}
-void controlButton(const TouchButton &button, const char *label, uint16_t color,
-                   bool touching, uint16_t x, uint16_t y) {
-  bool held=touching && button.contains(x,y);
-  uint16_t fill=held ? color : 0x1928;
-  gameFrame.fillRoundRect(button.x,button.y,button.w,button.h,6,fill);
-  gameFrame.drawRoundRect(button.x,button.y,button.w,button.h,6,held ? TFT_WHITE : color);
-  gameFrame.setTextColor(TFT_WHITE,fill);
-  gameFrame.drawCentreString(label,button.x+button.w/2,button.y+13,2);
 }
 void render(bool touching, uint16_t tx, uint16_t ty) {
   gameFrame.fillSprite(0x8E7D);
@@ -76,9 +71,9 @@ void render(bool touching, uint16_t tx, uint16_t ty) {
     int h=12+(i*17)%29;
     gameFrame.fillRect(i*17,horizon-h,14,h,0x7474);
   }
-  gameFrame.fillRect(0,horizon,320,131,0x7BCF);
-  for (int y=horizon+1;y<194;++y) {
-    float z=400.0f/(y-horizon);
+  gameFrame.fillRect(0,horizon,320,177,0x7BCF);
+  for (int y=horizon+1;y<240;++y) {
+    float z=cameraHeight*focal/(y-horizon);
     int left=projectX(-5.5f,z), right=projectX(5.5f,z);
     gameFrame.drawFastHLine(left-5,y,right-left+10,0xDEDB);
     gameFrame.drawFastHLine(left,y,right-left,0x3186);
@@ -102,7 +97,7 @@ void render(bool touching, uint16_t tx, uint16_t ty) {
     if(c.z>nearZ) car(projectX(c.x,c.z),projectY(c.z),max(3,(int)(1.7f*focal/c.z)),c.color);
   }
   if(invulnerable<=0 || ((int)(invulnerable*10)%2)==0)
-    car(projectX(playerX,nearZ),187,38,0x07F0);
+    car(projectX(playerX,playerZ),playerBottom,38,0x07F0);
   gameFrame.fillRect(0,0,320,31,0x1084);
   gameFrame.drawRoundRect(5,4,52,26,5,TFT_WHITE);
   gameFrame.setTextColor(TFT_WHITE,0x1084);
@@ -110,11 +105,6 @@ void render(bool touching, uint16_t tx, uint16_t ty) {
   char hud[64];
   snprintf(hud,sizeof(hud),"%d km/h  %dm  %d/3",(int)(speed*3.6f),(int)distance,damage);
   gameFrame.drawRightString(hud,315,9,2);
-  gameFrame.fillRect(0,190,320,50,0x1084);
-  controlButton(leftButton,"<",COLOR_MINT,touching,tx,ty);
-  controlButton(rightButton,">",COLOR_MINT,touching,tx,ty);
-  controlButton(brakeButton,"BRAKE",TFT_RED,touching,tx,ty);
-  controlButton(gasButton,"GAS",0x05A0,touching,tx,ty);
   if(finished) {
     gameFrame.fillRoundRect(35,67,250,108,10,0x1084);
     gameFrame.setTextColor(COLOR_GOLD,0x1084);
@@ -125,6 +115,7 @@ void render(bool touching, uint16_t tx, uint16_t ty) {
     gameFrame.setTextColor(TFT_WHITE,0x0357);
     gameFrame.drawCentreString("TRY AGAIN",160,143,2);
   }
+  UiNavigation::draw();
   gameFrame.pushSprite(0,0);
 }
 } // namespace CityDrive
@@ -141,7 +132,7 @@ void beginCityDrive() {
   render(false,0,0);
 }
 
-void updateCityDrive(uint32_t now, bool touching, bool tapped, uint16_t x, uint16_t y) {
+void updateCityDrive(uint32_t now, bool touching, bool tapped, uint16_t x, uint16_t y, uint8_t buttons = 0) {
   using namespace CityDrive;
   if(tapped && exitButton.contains(x,y)) { drawGameList(); return; }
   if(finished) {
@@ -151,13 +142,13 @@ void updateCityDrive(uint32_t now, bool touching, bool tapped, uint16_t x, uint1
   if(now-lastFrame<33) return;
   float dt=min(0.1f,(now-lastFrame)/1000.0f); lastFrame=now;
   float steering=0, acceleration=-2.0f;
-  if(touching) {
-    if(leftButton.contains(x,y)) steering=-1;
-    else if(rightButton.contains(x,y)) steering=1;
-    else if(gasButton.contains(x,y)) acceleration=9.0f;
-    else if(brakeButton.contains(x,y)) acceleration=-18.0f;
-  }
-  // Single-touch screen: the car coasts while the player switches to steering.
+  bool left=buttons & 0x01;
+  bool right=buttons & 0x02;
+  bool gas=buttons & 0x04;
+  bool brake=buttons & 0x08;
+  steering=(int)right-(int)left;
+  if(brake) acceleration=-18.0f;
+  else if(gas) acceleration=9.0f;
   speed=constrain(speed+acceleration*dt,0.0f,30.0f);
   playerX=constrain(playerX+steering*dt*(1.0f+speed*0.12f),-4.6f,4.6f);
   distance+=speed*dt;
@@ -169,6 +160,7 @@ void updateCityDrive(uint32_t now, bool touching, bool tapped, uint16_t x, uint1
     c.z+=(c.speed-speed)*dt;
     if(invulnerable<=0 && c.z<5.2f && oldZ>2.0f && fabsf(c.x-playerX)<1.5f) {
       GameAudio::play(GameAudio::Crash);
+      DamageLed::flash(now);
       ++damage; speed*=0.3f; invulnerable=1.6f;
       resetTraffic(i,100+i*9);
       if(damage>=3) { finished=true; GameAudio::play(GameAudio::Lose); }

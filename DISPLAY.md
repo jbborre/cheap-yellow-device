@@ -49,3 +49,34 @@ The renderer uses exact pixel comparisons to update only changed regions, includ
 This adds a 76,800-byte previous-frame buffer and two 10,560-byte DMA buffers. If those allocations fail, rendering falls back to full updates or synchronous band transfers. Startup serial output reports which optimizations are enabled. Games target approximately 30 updates per second; the main loop yields for 1 ms instead of adding a 10 ms delay to each frame.
 
 The SPI clock remains at 40 MHz. A full 480×320 RGB565 transfer still needs at least 61.44 ms at that speed, so large scrolling scenes cannot reach 30 fps merely through DMA. These changes reduce transfer overhead and unchanged pixel traffic; they do not guarantee tear-free refresh. Hardware synchronization would need access to the panel's TE signal, which is not configured on this board. See [Espressif's tearing explanation](https://docs.espressif.com/projects/esp-iot-solution/en/latest/display/lcd/lcd_screen_tearing.html).
+
+## Physical controls and battery indicator
+
+A PCF8574T on SDA GPIO19 / SCL GPIO23 reads four buttons connected to GND.
+The driver tries `GAME_BUTTONS_ADDRESS` (default `0x20`), then the other
+PCF8574T addresses through `0x27`. Inputs are debounced and support simultaneous
+presses.
+
+In menus, P0/P1 move the gold focus outline, P2 selects, and P3 goes back.
+This includes hero/weapon/armory selection and retry screens. During City Drive,
+P0/P1 steer, P2 accelerates, and P3 brakes. During Zombie Crash, P0/P1 move,
+P2 attacks, and P3 switches weapons. The bottom gameplay touch controls have
+been removed; Zombie Crash still displays its active weapon.
+
+The ELEGOO ILI9341 profile reads battery voltage on GPIO34 with the onboard
+2:1 divider, as described in [ELEGOO's battery example](https://wiki.elegoo.com/en/oshw-parts-%26-accessories/esp32-dispaly-voltage).
+The home screen shows an estimated single-cell Li-ion percentage, refreshed
+every five seconds. Voltage-based estimates vary with load and charging.
+`BAT --%` means the measurement is unavailable. Other board profiles leave
+battery sensing disabled unless `BATTERY_ADC_PIN` and, if necessary,
+`BATTERY_DIVIDER` are configured for their hardware.
+
+The home-screen gear opens sound settings. Select Sound to toggle audio, or
+select the minus/plus buttons to adjust the DAC amplitude (mute, 12%, 25%, 50%,
+100%). Settings support touch and the same P0/P1/P2/P3 menu controls, and are
+saved across restarts. The rounded gold outline marks the selected menu item.
+
+On the ELEGOO ILI9341 profile, accepted damage in Zombie Crash or City Drive
+flashes the onboard RGB LED red for 180 ms. Its common-anode channels are
+red GPIO22, green GPIO16, and blue GPIO17; green and blue stay off. Other
+profiles leave the LED disabled unless their `DAMAGE_LED_*_PIN` flags are set.

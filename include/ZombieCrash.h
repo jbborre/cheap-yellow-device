@@ -1,5 +1,6 @@
 #pragma once
 #include "GameAudio.h"
+#include "DamageLed.h"
 #include <math.h>
 #ifndef GAME_AUDIO_HOST_TEST
 #include <Preferences.h>
@@ -7,7 +8,8 @@
 
 // Fixed-size entity pools and the shared 8-bit sprite keep memory use bounded.
 namespace ZombieCrash {
-constexpr int ground = 177;
+constexpr int ground = 207;
+constexpr int weaponBarY = 219;
 constexpr float levelEnd = 2600.0f;
 constexpr float arenaStart = 2180.0f;
 constexpr int maxZombies = 16;
@@ -188,6 +190,7 @@ void startLevel(uint32_t now, int selectedLevel = 1) {
 
 void hurtPlayer() {
   if (immunity>0 || stage!=ACTIVE_LEVEL) return;
+  DamageLed::flash(millis());
   GameAudio::play(GameAudio::Hurt);
   life=max(0,life-1); immunity=1.15f;
   if (life==0) { stage=DEFEAT; GameAudio::play(GameAudio::Lose); }
@@ -556,12 +559,12 @@ void render(bool touching, uint16_t tx, uint16_t ty, int movement) {
     }
     for(int i=-1;i<6;++i) {
       int x=i*85-(int)(camera*0.55f)%85;
-      gameFrame.fillRect(x,125,5,52,0x82A5);
+      gameFrame.fillRect(x,125,5,ground-125,0x82A5);
       if (level==2) {
         gameFrame.fillTriangle(x-19,147,x+2,107,x+23,147,0x4355);
         gameFrame.fillTriangle(x-12,131,x+2,107,x+16,131,TFT_WHITE);
       } else if (level==3) {
-        gameFrame.fillTriangle(x-22,177,x+2,112,x+27,177,0x4208);
+        gameFrame.fillTriangle(x-22,ground,x+2,ground-65,x+27,ground,0x4208);
         gameFrame.drawWideLine(x+2,119,x+9,162,3,0xF940);
       } else gameFrame.fillCircle(x+2,123,17,0x3487);
     }
@@ -572,10 +575,10 @@ void render(bool touching, uint16_t tx, uint16_t ty, int movement) {
       gameFrame.drawLine(x,ground,x+3,ground-5,level==2 ? TFT_WHITE : 0x3CA3);
     }
     if (level==3) {
-      gameFrame.fillRect(0,160,320,29,0xF940);
+      gameFrame.fillRect(0,ground-17,320,weaponBarY-ground+17,0xF940);
       for (int x=0;x<320;++x) {
         int y=(int)terrain(camera+x);
-        gameFrame.drawFastVLine(x,y,191-y,0x4208);
+        gameFrame.drawFastVLine(x,y,weaponBarY-y,0x4208);
         gameFrame.drawFastVLine(x,y,3,0xFBE0);
       }
     }
@@ -654,21 +657,13 @@ void render(bool touching, uint16_t tx, uint16_t ty, int movement) {
       gameFrame.setTextColor(0x1104,0xB73F);
       gameFrame.drawCentreString("Dodge spit. Avoid red spike marks!",160,56,1);
     }
-    gameFrame.fillRect(0,189,320,51,0x1104);
-    button(leftButton,"<",touching && leftButton.contains(tx,ty));
-    button(rightButton,">",touching && rightButton.contains(tx,ty));
-    button(attackButton,"A",touching && attackButton.contains(tx,ty));
+    gameFrame.fillRect(0,weaponBarY,320,240-weaponBarY,0x1104);
     gameFrame.setTextColor(TFT_WHITE,0x1104);
-    if (extra!=NONE) {
-      if (!useExtra) snprintf(label,sizeof(label),"%s >",bow ? "BOW" : "SWORD");
-      else if (extra==GRENADES) snprintf(label,sizeof(label),"BOMBS %d",grenades);
-      else if (extra==SPEAR) snprintf(label,sizeof(label),"SPEAR");
-      else snprintf(label,sizeof(label),"DOG %ds",dogAvailable ? 10 : (int)ceilf(dogTime));
-      button(switchButton,label);
-    } else {
-      gameFrame.drawCentreString(bow ? "BOW" : "SWORD",193,201,2);
-      gameFrame.drawCentreString("HOLD A",193,222,1);
-    }
+    if (!useExtra || extra==NONE) snprintf(label,sizeof(label),"WEAPON: %s",bow ? "BOW" : "SWORD");
+    else if (extra==GRENADES) snprintf(label,sizeof(label),"WEAPON: BOMBS (%d)",grenades);
+    else if (extra==SPEAR) snprintf(label,sizeof(label),"WEAPON: SPEAR");
+    else snprintf(label,sizeof(label),"WEAPON: DOG (%ds)",dogAvailable ? 10 : (int)ceilf(dogTime));
+    gameFrame.drawCentreString(label,160,weaponBarY+3,2);
     if(stage==LEVEL_COMPLETE || stage==VICTORY || stage==DEFEAT) {
       gameFrame.fillRoundRect(24,56,272,128,10,0x1104);
       gameFrame.setTextColor(COLOR_GOLD,0x1104);
@@ -685,6 +680,7 @@ void render(bool touching, uint16_t tx, uint16_t ty, int movement) {
       button(menuButton,"CHOOSE HERO / WEAPON");
     }
   }
+  UiNavigation::draw();
   gameFrame.pushSprite(0,0);
 }
 } // namespace ZombieCrash
@@ -699,7 +695,7 @@ void beginZombieCrash() {
   ZombieCrash::render(false,0,0,0);
 }
 
-void updateZombieCrash(uint32_t now, bool touching, bool tapped, uint16_t x, uint16_t y) {
+void updateZombieCrash(uint32_t now, bool touching, bool tapped, uint16_t x, uint16_t y, uint8_t buttons = 0, uint8_t pressed = 0) {
   using namespace ZombieCrash;
   if(tapped && exitButton.contains(x,y)) {
     if(stage==WEAPON_SELECT) { stage=CHARACTER_SELECT; render(false,0,0,0); }
@@ -734,14 +730,15 @@ void updateZombieCrash(uint32_t now, bool touching, bool tapped, uint16_t x, uin
     else if(tapped && menuButton.contains(x,y)) beginZombieCrash();
     return;
   }
-  if (tapped && extra!=NONE && switchButton.contains(x,y)) useExtra=!useExtra;
+  if (extra!=NONE && (pressed & 0x08)) useExtra=!useExtra;
   // Preserve short A taps that arrive between rendering frames.
-  if(tapped && attackButton.contains(x,y)) pendingAttack=true;
+  if(pressed & 0x04) pendingAttack=true;
   if(now-lastFrame<33) return;
   float dt=min(0.1f,(now-lastFrame)/1000.0f); lastFrame=now;
-  int movement=touching && leftButton.contains(x,y) ? -1 :
-               touching && rightButton.contains(x,y) ? 1 : 0;
-  step(dt,movement,pendingAttack || (touching && attackButton.contains(x,y)));
+  bool left=buttons & 0x01;
+  bool right=buttons & 0x02;
+  int movement=(int)right-(int)left;
+  step(dt,movement,pendingAttack || (buttons & 0x04));
   pendingAttack=false;
   render(touching,x,y,movement);
 }

@@ -31,5 +31,15 @@ int main() {
     clockMs+=2000; update(clockMs);
     assert(outputHz==0 && !playing);
   }
-  puts("Audio timing, priority, engine, mute and rollover checks passed");
+  play(Shot);
+  uint16_t frequency=outputHz;
+  setVolume(2); assert(volumePercent()==25 && outputHz==frequency && outputVolume==2);
+  setVolume(0); assert(outputHz==0 && !playing && enabled);
+  play(Shot); engine(20); update(clockMs); assert(outputHz==0 && !playing);
+  setVolume(3); assert(volumePercent()==50);
+  play(Shot); assert(outputHz==1400);
+  setVolume(20); assert(volumePercent()==100);
+  setVolume(-5); assert(volumePercent()==0 && outputHz==0);
+  setEnabled(false); setVolume(4); update(clockMs); assert(outputHz==0);
+  puts("Audio timing, priority, volume, engine, mute and rollover checks passed");
 }
