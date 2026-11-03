@@ -1,6 +1,7 @@
 #pragma once
 #include "GameAudio.h"
 #include "DamageLed.h"
+#include "GameGfx.h"
 #include <math.h>
 #ifndef GAME_AUDIO_HOST_TEST
 #include <Preferences.h>
@@ -92,9 +93,11 @@ const TouchButton retryButton = {58, 125, 204, 41};
 const TouchButton menuButton = {58, 178, 204, 38};
 
 void button(const TouchButton &b, const char *label, bool held = false) {
-  uint16_t fill = held ? 0x5B8B : 0x2126;
+  uint16_t fill = held ? 0x5B8B : GameGfx::rgb(73,36,109);
+  gameFrame.fillRoundRect(b.x, b.y+2, b.w, b.h, 7, GameGfx::rgb(0,0,36));
   gameFrame.fillRoundRect(b.x, b.y, b.w, b.h, 7, fill);
-  gameFrame.drawRoundRect(b.x, b.y, b.w, b.h, 7, held ? COLOR_GOLD : TFT_WHITE);
+  gameFrame.drawFastHLine(b.x+6, b.y+2, b.w-12, GameGfx::lighter(fill));
+  gameFrame.drawRoundRect(b.x, b.y, b.w, b.h, 7, held ? COLOR_GOLD : GameGfx::rgb(182,146,255));
   gameFrame.setTextColor(TFT_WHITE, fill);
   gameFrame.drawCentreString(label, b.x+b.w/2, b.y+(b.h-16)/2, 2);
 }
@@ -390,36 +393,90 @@ void step(float dt, int movement, bool attacking) {
   updateHazards(dt);
 }
 
+using GameGfx::rgb;
+const uint16_t panel=rgb(36,36,85), panelEdge=rgb(109,73,170);
+const uint16_t skin=rgb(255,219,170), skinShade=rgb(219,146,85);
+const uint16_t leather=rgb(109,73,0), lavaGlow=rgb(255,146,0);
+
+// Soft contact shadow just below the feet; it shrinks as fliers rise.
+void shadow(int x, int y, int rx) {
+  for (int dy=0; dy<3; ++dy) GameGfx::darkenSpan(x-rx+dy*rx/4, x+rx-dy*rx/4+1, y+dy);
+}
+void heart(int x, int y, uint16_t color) {
+  gameFrame.fillCircle(x-3, y, 3, color); gameFrame.fillCircle(x+3, y, 3, color);
+  gameFrame.fillTriangle(x-6, y+1, x+6, y+1, x, y+7, color);
+}
+
 void person(int x, int feet, bool isFemale, int direction, bool walking) {
-  uint16_t shirt=wearCrown ? COLOR_GOLD : isFemale ? 0xC99B : 0x249F;
+  uint16_t shirt=wearCrown ? COLOR_GOLD : isFemale ? rgb(219,73,170) : rgb(36,109,255);
+  uint16_t hair=isFemale ? rgb(146,73,0) : rgb(73,36,0);
   int stride=walking ? (int)(sinf(walkPhase)*4) : 0;
-  gameFrame.fillEllipse(x,feet,13,3,0x3285);
-  gameFrame.drawWideLine(x-4,feet-14,x-5-stride,feet,5,0x2128);
-  gameFrame.drawWideLine(x+4,feet-14,x+5+stride,feet,5,0x2128);
-  gameFrame.fillRoundRect(x-8,feet-33,16,21,3,shirt);
-  if (isFemale) gameFrame.fillRoundRect(x-10,feet-49,20,26,5,0x5143);
-  gameFrame.fillCircle(x,feet-41,8,0xFED2);
-  gameFrame.fillRect(x-8,feet-49,16,5,0x5143);
-  gameFrame.fillCircle(x+direction*4,feet-42,1,TFT_BLACK);
-  if (wearCrown) {
-    gameFrame.fillRect(x-9,feet-53,18,5,COLOR_GOLD);
-    for (int i=-1;i<=1;++i) gameFrame.fillTriangle(x+i*6-3,feet-53,x+i*6,feet-60,x+i*6+3,feet-53,COLOR_GOLD);
+  int back=-direction;
+  // Long hair falls behind the shoulders, then the far arm swings opposite.
+  if (isFemale) {
+    gameFrame.fillRoundRect(x-9, feet-48, 18, 24, 5, hair);
+    gameFrame.fillTriangle(x+back*8, feet-46, x+back*14, feet-26, x+back*4, feet-30, hair);
   }
-  gameFrame.drawWideLine(x+direction*6,feet-29,x+direction*15,feet-24,4,0xFED2);
+  gameFrame.drawWideLine(x+back*3, feet-30, x+back*5-stride, feet-17, 4, skinShade);
+  gameFrame.drawWideLine(x-3, feet-14, x-4-stride, feet-3, 5, rgb(36,36,109));
+  gameFrame.drawWideLine(x+3, feet-14, x+4+stride, feet-3, 5, rgb(36,73,170));
+  gameFrame.fillRoundRect(x-7-stride, feet-4, 7, 4, 1, leather);
+  gameFrame.fillRoundRect(x+1+stride, feet-4, 7, 4, 1, leather);
+  gameFrame.fillRoundRect(x-8, feet-33, 16, 21, 3, shirt);
+  gameFrame.fillRect(back>0 ? x+3 : x-8, feet-30, 5, 16, GameGfx::darker(shirt));
+  gameFrame.fillRect(x-8, feet-16, 16, 3, leather);
+  gameFrame.fillRect(x-2, feet-16, 4, 3, COLOR_GOLD);
+  gameFrame.fillRect(x-3, feet-34, 6, 3, skin);
+  gameFrame.fillCircle(x, feet-41, 8, skin);
+  gameFrame.fillRect(x+back*5, feet-42, 3, 4, skinShade);
+  // Hair cap with a fringe on the facing side.
+  gameFrame.fillRoundRect(x-8, feet-50, 16, 7, 3, hair);
+  gameFrame.fillRect(back>0 ? x+2 : x-8, feet-46, 6, 6, hair);
+  gameFrame.fillRect(x+direction*3, feet-43, 3, 3, TFT_WHITE);
+  gameFrame.fillRect(x+direction*4+(direction>0 ? 0 : 1), feet-42, 1, 2, TFT_BLACK);
+  gameFrame.drawFastHLine(x+direction*2-(direction<0 ? 3 : 0), feet-36, 4, rgb(182,73,85));
+  if (wearCrown) {
+    gameFrame.fillRect(x-9, feet-54, 18, 5, COLOR_GOLD);
+    for (int i=-1;i<=1;++i) gameFrame.fillTriangle(x+i*6-3, feet-54, x+i*6, feet-61, x+i*6+3, feet-54, COLOR_GOLD);
+    gameFrame.drawFastHLine(x-9, feet-50, 18, rgb(182,109,0));
+    gameFrame.fillRect(x-1, feet-53, 3, 3, TFT_RED);
+  }
+  gameFrame.drawWideLine(x+direction*4, feet-30, x+direction*10, feet-26, 5, GameGfx::darker(shirt));
+  gameFrame.drawWideLine(x+direction*10, feet-26, x+direction*15, feet-24, 4, skin);
 }
 
 void drawWeapon(int x, int feet, bool useBow, int direction, bool attacking) {
   int hand=x+direction*16, y=feet-25;
   if (useBow) {
-    gameFrame.drawLine(hand,y-13,hand+direction*8,y,0xDDA6);
-    gameFrame.drawLine(hand+direction*8,y,hand,y+13,0xDDA6);
-    gameFrame.drawFastVLine(hand,y-13,27,TFT_WHITE);
-    gameFrame.drawLine(hand-direction*7,y,hand+direction*13,y,TFT_WHITE);
+    // Curved limb drawn as short segments, string pulled back to the hand.
+    int px=hand, py=y-14;
+    for (int i=1;i<=6;++i) {
+      int ny=y-14+i*28/6, nx=hand+direction*(int)(7*sinf(i*3.14159f/6));
+      gameFrame.drawWideLine(px, py, nx, ny, 3, i==3 || i==4 ? leather : rgb(182,109,0));
+      px=nx; py=ny;
+    }
+    gameFrame.drawLine(hand, y-14, hand-direction*3, y, rgb(219,219,255));
+    gameFrame.drawLine(hand-direction*3, y, hand, y+14, rgb(219,219,255));
+    gameFrame.drawLine(hand-direction*3, y, hand+direction*14, y, rgb(182,109,0));
+    gameFrame.fillTriangle(hand+direction*14, y-2, hand+direction*18, y, hand+direction*14, y+2, TFT_WHITE);
   } else {
     int tipX=hand+direction*(attacking ? 38 : 13), tipY=y-(attacking ? 5 : 27);
-    gameFrame.drawWideLine(hand,y,tipX,tipY,4,TFT_WHITE);
-    gameFrame.drawLine(hand-4,y-4,hand+4,y+4,COLOR_GOLD);
-    if (attacking) gameFrame.drawLine(tipX,tipY-9,tipX+direction*3,tipY+10,COLOR_GOLD);
+    if (attacking) {
+      // Motion arc behind the blade.
+      for (int r=30;r<=38;r+=4)
+        for (int a=-70;a<0;a+=10) {
+          float t0=a*0.01745f, t1=(a+10)*0.01745f;
+          gameFrame.drawLine(hand+direction*(int)(r*cosf(t0)), y+(int)(r*sinf(t0)),
+                             hand+direction*(int)(r*cosf(t1)), y+(int)(r*sinf(t1)),
+                             r==38 ? rgb(146,219,255) : TFT_WHITE);
+        }
+    }
+    gameFrame.drawWideLine(hand, y, tipX, tipY, 4, rgb(182,182,170));
+    gameFrame.drawLine(hand, y-1, tipX, tipY-1, TFT_WHITE);
+    float len=sqrtf((tipX-hand)*(tipX-hand)+(tipY-y)*(tipY-y));
+    int gx=(int)((tipY-y)/len*5), gy=(int)(-(tipX-hand)/len*5);
+    gameFrame.drawWideLine(hand-gx, y-gy, hand+gx, y+gy, 3, COLOR_GOLD);
+    gameFrame.drawWideLine(hand, y, hand-(tipX-hand)/(attacking ? 8 : 4), y-(tipY-y)/(attacking ? 8 : 4), 3, leather);
   }
 }
 
@@ -429,18 +486,38 @@ void drawZombie(float worldX, bool chief, float rising, int hp, bool flash,
   if (x<-40 || x>360) return;
   int scale=chief ? 2 : 1;
   int feet=(int)(terrain(worldX)-altitude+rising*45);
-  if (level==3 && !chief) {
-    int flap=(int)(sinf(animationTime*10)*10);
-    for (int side=-1;side<=1;side+=2) gameFrame.fillTriangle(x,feet-30,x+side*30,feet-50+flap,x+side*22,feet-20,0x8208);
-  }
-  uint16_t skin=flash ? TFT_WHITE : level==2 ? 0xAEBF : (chief ? 0x65E5 : 0x8E88);
-  gameFrame.fillEllipse(x,ground,chief ? 22 : 13,4,level==2 ? 0x7495 : 0x3285);
-  gameFrame.fillRect(x-7*scale,feet-17*scale,5*scale,17*scale,0x39C6);
-  gameFrame.fillRect(x+2*scale,feet-17*scale,5*scale,17*scale,0x39C6);
-  gameFrame.fillRoundRect(x-9*scale,feet-34*scale,18*scale,20*scale,3,
-                         level==2 ? 0x4355 : chief ? 0x8208 : 0x7308);
-  gameFrame.fillRoundRect(x-8*scale,feet-49*scale,16*scale,16*scale,3,skin);
   int dir=playerX>worldX ? 1 : -1;
+  if (level==3 && !chief) {
+    // Bat wings: membrane panels between finger bones.
+    int flap=(int)(sinf(animationTime*10)*10);
+    for (int side=-1;side<=1;side+=2) {
+      gameFrame.fillTriangle(x+side*4, feet-34, x+side*30, feet-52+flap, x+side*24, feet-22, rgb(109,36,36));
+      gameFrame.fillTriangle(x+side*4, feet-34, x+side*24, feet-22, x+side*12, feet-20, rgb(73,0,36));
+      gameFrame.drawLine(x+side*4, feet-34, x+side*30, feet-52+flap, rgb(182,73,85));
+      gameFrame.drawLine(x+side*10, feet-38+flap/3, x+side*24, feet-22, rgb(182,73,85));
+    }
+  }
+  uint16_t skinTone=flash ? TFT_WHITE : level==2 ? rgb(182,219,255) : (chief ? rgb(109,182,36) : rgb(146,182,73));
+  uint16_t skinDark=flash ? TFT_WHITE : GameGfx::mix565(skinTone, TFT_BLACK, 1, 3);
+  uint16_t cloth=level==2 ? rgb(73,109,170) : chief ? rgb(146,36,36) : rgb(109,73,36);
+  uint16_t pants=level==2 ? rgb(36,73,109) : rgb(73,73,85);
+  // Ragged trousers and shirt hems.
+  gameFrame.fillRect(x-7*scale, feet-17*scale, 5*scale, 15*scale, pants);
+  gameFrame.fillRect(x+2*scale, feet-17*scale, 5*scale, 15*scale, GameGfx::mix565(pants,TFT_BLACK,1,4));
+  gameFrame.fillTriangle(x-7*scale, feet-3*scale, x-2*scale, feet-3*scale, x-5*scale, feet, pants);
+  gameFrame.fillRect(x-8*scale+dir*scale, feet-2*scale, 6*scale, 2*scale, skinDark);
+  gameFrame.fillRect(x+2*scale+dir*scale, feet-2*scale, 6*scale, 2*scale, skinDark);
+  gameFrame.fillRoundRect(x-9*scale, feet-34*scale, 18*scale, 20*scale, 3, cloth);
+  gameFrame.fillRect(dir>0 ? x-9*scale : x+4*scale, feet-31*scale, 5*scale, 15*scale, GameGfx::darker(cloth));
+  for (int i=0;i<3;++i)
+    gameFrame.fillTriangle(x+(-9+i*6)*scale, feet-15*scale, x+(-3+i*6)*scale, feet-15*scale,
+                           x+(-6+i*6)*scale, feet-(11+i%2*2)*scale, cloth);
+  gameFrame.fillRect(x+(dir>0 ? 1 : -4)*scale, feet-27*scale, 3*scale, 4*scale, skinDark);
+  // Head with sunken eyes, jaw shadow and teeth.
+  gameFrame.fillRoundRect(x-8*scale, feet-49*scale, 16*scale, 16*scale, 3, skinTone);
+  gameFrame.fillRect(x-8*scale, feet-37*scale, 16*scale, 4*scale, skinDark);
+  gameFrame.fillRect(x+(dir>0 ? 0 : -6)*scale, feet-37*scale, 6*scale, 2*scale, rgb(36,0,0));
+  gameFrame.drawFastHLine(x+(dir>0 ? 1 : -5)*scale, feet-37*scale, 4*scale, TFT_WHITE);
   // Both arms wind back and sweep forward with the melee damage timing.
   float phase=attackTimer>0 ? (0.85f-attackTimer)/0.85f : 0;
   int reach=attackTimer>0 ? (int)(8+15*sinf(phase*3.14159f)) : 13;
@@ -448,15 +525,18 @@ void drawZombie(float worldX, bool chief, float rising, int hp, bool flash,
   for (int arm=0;arm<2;++arm) {
     int shoulder=x+(arm ? 5 : -5)*scale;
     int y=feet-(arm ? 28 : 31)*scale;
-    gameFrame.drawWideLine(shoulder,y,x+dir*reach*scale,y+lift*scale,3*scale,skin);
-    gameFrame.fillCircle(x+dir*reach*scale,y+lift*scale,2*scale,skin);
+    gameFrame.drawWideLine(shoulder,y,x+dir*reach*scale,y+lift*scale,3*scale,arm ? skinTone : skinDark);
+    gameFrame.fillCircle(x+dir*reach*scale,y+lift*scale,2*scale,arm ? skinTone : skinDark);
   }
-  gameFrame.fillRect(x-5*scale,feet-43*scale,3*scale,3*scale,TFT_RED);
-  gameFrame.fillRect(x+3*scale,feet-43*scale,3*scale,3*scale,TFT_RED);
+  gameFrame.fillRect(x-6*scale, feet-44*scale, 5*scale, 4*scale, rgb(36,0,0));
+  gameFrame.fillRect(x+2*scale, feet-44*scale, 5*scale, 4*scale, rgb(36,0,0));
+  gameFrame.fillRect(x-5*scale+dir*scale, feet-43*scale, 2*scale, 2*scale, TFT_RED);
+  gameFrame.fillRect(x+3*scale+dir*scale, feet-43*scale, 2*scale, 2*scale, TFT_RED);
   // Broken skull rim, pink brain lobes and dark folds remain visible on ice zombies.
   gameFrame.fillRect(x-7*scale,feet-50*scale,14*scale,3*scale,0xEF7B);
   gameFrame.fillCircle(x-3*scale,feet-51*scale,4*scale,0xFBB6);
   gameFrame.fillCircle(x+3*scale,feet-51*scale,4*scale,0xFBB6);
+  gameFrame.fillCircle(x-4*scale,feet-53*scale,scale,TFT_WHITE);
   gameFrame.drawLine(x,feet-54*scale,x,feet-48*scale,0xA90D);
   gameFrame.drawLine(x-5*scale,feet-52*scale,x-2*scale,feet-50*scale,0xA90D);
   gameFrame.drawLine(x+2*scale,feet-53*scale,x+5*scale,feet-51*scale,0xA90D);
@@ -469,21 +549,28 @@ void drawZombie(float worldX, bool chief, float rising, int hp, bool flash,
   if (spitter) {
     gameFrame.fillCircle(x+dir*5,feet-37,4,0x07E0);
     gameFrame.fillCircle(x+dir*6,feet-37,2,0x2126);
+    gameFrame.drawFastVLine(x+dir*3,feet-34,4+(int)(animationTime*6)%3,0x07E0);
   }
   if (chief && level==3) {
     // Smoky genie tail, gold cuffs, and a three-point royal crown.
     gameFrame.fillTriangle(x-20,feet-35,x+20,feet-35,x+(int)(sinf(animationTime*4)*14),feet,0xA29F);
+    gameFrame.fillTriangle(x-12,feet-35,x+12,feet-35,x+(int)(sinf(animationTime*4+0.6f)*10),feet-8,rgb(219,146,255));
     gameFrame.fillRect(x-18,feet-101,36,8,COLOR_GOLD);
+    gameFrame.drawFastHLine(x-18,feet-94,36,rgb(182,109,0));
     for (int i=-1;i<=1;++i) gameFrame.fillTriangle(x+i*13-6,feet-101,x+i*13,feet-115,x+i*13+6,feet-101,COLOR_GOLD);
     gameFrame.fillCircle(x,feet-98,3,TFT_RED);
+    gameFrame.fillCircle(x-11,feet-97,2,rgb(36,146,255));
+    gameFrame.fillCircle(x+11,feet-97,2,rgb(0,219,85));
   } else if (chief) {
     // Side horns frame the exposed brain instead of covering it.
-    for (int side=-1;side<=1;side+=2)
-      gameFrame.fillTriangle(x+side*12,feet-98,x+side*24,feet-116,x+side*21,feet-96,
-                             level==2 ? 0xBFFF : COLOR_GOLD);
+    for (int side=-1;side<=1;side+=2) {
+      uint16_t horn=level==2 ? 0xBFFF : COLOR_GOLD;
+      gameFrame.fillTriangle(x+side*12,feet-98,x+side*24,feet-116,x+side*21,feet-96,horn);
+      gameFrame.drawLine(x+side*14,feet-99,x+side*23,feet-113,GameGfx::lighter(horn));
+    }
     gameFrame.fillRect(x-15,feet-98,30,3,level==2 ? TFT_WHITE : COLOR_GOLD);
   } else {
-    gameFrame.fillRect(x-9,feet-61,18,3,0x2126);
+    gameFrame.fillRect(x-10,feet-62,20,5,TFT_BLACK);
     gameFrame.fillRect(x-9,feet-61,hp*9,3,COLOR_MINT);
   }
 }
@@ -492,187 +579,361 @@ void drawHazards() {
   for (const auto &p : spikes) if (p.active) {
     int x=(int)(p.x-camera);
     if (p.timer>spikeDuration) {
-      gameFrame.fillEllipse(x,ground-1,23,4,TFT_RED);
+      // Pulsing warning ring.
+      bool pulse=((int)(p.timer*8))%2;
+      GameGfx::screenRect(x-23,ground-3,47,7,TFT_RED);
+      gameFrame.drawEllipse(x,ground,23,4,pulse ? TFT_WHITE : TFT_RED);
       gameFrame.drawLine(x-7,ground-10,x+7,ground-3,TFT_WHITE);
       gameFrame.drawLine(x+7,ground-10,x-7,ground-3,TFT_WHITE);
     } else {
       gameFrame.fillEllipse(x,ground,23,4,0x4355);
       int height=(int)(34*min(1.0f,(spikeDuration-p.timer)*12+0.15f));
       for (int i=-1;i<=1;++i) {
-        gameFrame.fillTriangle(x+i*13-7,ground,x+i*13,ground-height+(i==0 ? -7 : 0),x+i*13+7,ground,0xBFFF);
-        gameFrame.drawLine(x+i*13,ground-height,x+i*13+6,ground,TFT_WHITE);
+        int peak=ground-height+(i==0 ? -7 : 0);
+        gameFrame.fillTriangle(x+i*13-7,ground,x+i*13,peak,x+i*13+7,ground,0xBFFF);
+        gameFrame.fillTriangle(x+i*13,peak,x+i*13+7,ground,x+i*13+2,ground,rgb(109,182,255));
+        gameFrame.drawLine(x+i*13-1,peak+2,x+i*13-4,ground-2,TFT_WHITE);
       }
     }
   }
   for (const auto &p : spit) if (p.active) {
     int x=(int)(p.x-camera), y=(int)p.y;
     gameFrame.drawWideLine(x-p.vx*0.035f,y-p.vy*0.035f,x,y,3,0x5F6A);
+    GameGfx::glow(x,y,7,rgb(146,255,85));
     gameFrame.fillCircle(x,y,4,0x07E0);
     gameFrame.fillCircle(x-1,y-1,1,TFT_WHITE);
   }
 }
 
+void card(const TouchButton &b) {
+  GameGfx::gradient(b.x+2,b.y+2,b.w-4,b.h-4,rgb(73,73,170),rgb(36,36,85));
+  gameFrame.drawRoundRect(b.x,b.y,b.w,b.h,8,panelEdge);
+  gameFrame.drawRoundRect(b.x+1,b.y+1,b.w-2,b.h-2,7,rgb(36,0,85));
+  gameFrame.drawFastHLine(b.x+8,b.y+2,b.w-16,rgb(146,146,255));
+}
+// Moonlit graveyard backdrop shared by the menu screens.
+void graveyard() {
+  GameGfx::gradient(0,0,320,240,rgb(36,0,85),rgb(73,36,109));
+  GameGfx::glow(280,40,22,rgb(219,219,255));
+  gameFrame.fillCircle(280,40,13,rgb(255,255,170));
+  gameFrame.fillCircle(276,36,3,rgb(219,219,170));
+  for (int i=0;i<9;++i) {
+    int x=i*38+(i*17)%13, h=12+(i*7)%9;
+    gameFrame.fillRoundRect(x,232-h,14,h+8,6,rgb(36,36,85));
+    if (i%3==0) {
+      gameFrame.fillRect(x+6,226-h,2,8,rgb(36,36,85));
+      gameFrame.fillRect(x+3,228-h,8,2,rgb(36,36,85));
+    }
+  }
+}
+
 void drawSelection() {
-  gameFrame.fillSprite(0x1104);
+  graveyard();
   button(exitButton,"BACK");
-  gameFrame.setTextColor(COLOR_GOLD,0x1104);
+  gameFrame.setTextColor(rgb(36,0,0));
+  gameFrame.drawCentreString("ZOMBIE CRASH",162,38,4);
+  gameFrame.setTextColor(rgb(146,255,0));
   gameFrame.drawCentreString("ZOMBIE CRASH",160,36,4);
   bool choosingCharacter=stage==CHARACTER_SELECT;
   if (choosingCharacter && crownUnlocked) {
     button(outfitButton,wearCrown ? "CROWN: ON" : "CROWN: OFF");
-    gameFrame.setTextColor(COLOR_GOLD,0x1104);
+    gameFrame.setTextColor(COLOR_GOLD);
     gameFrame.drawRightString("TROPHY WON",313,12,1);
   }
-  gameFrame.fillRoundRect(18,78,136,101,8,0x2948);
-  gameFrame.fillRoundRect(166,78,136,101,8,0x2948);
+  card(firstChoice); card(secondChoice);
   if (choosingCharacter) {
+    shadow(86,145,14); shadow(234,145,14);
     person(86,145,false,1,false); person(234,145,true,-1,false);
   } else {
     drawWeapon(70,147,false,1,true); drawWeapon(220,147,true,1,false);
   }
-  gameFrame.setTextColor(TFT_WHITE,0x2948);
+  gameFrame.setTextColor(TFT_WHITE);
   gameFrame.drawCentreString(choosingCharacter ? "MALE" : "SWORD",86,155,2);
   gameFrame.drawCentreString(choosingCharacter ? "FEMALE" : "BOW",234,155,2);
-  gameFrame.setTextColor(TFT_WHITE,0x1104);
   gameFrame.drawCentreString(choosingCharacter ? "Choose your hero" : "Choose your weapon",160,186,2);
+  gameFrame.setTextColor(rgb(182,182,255));
   gameFrame.drawCentreString("Hold < > to move. Hold A to attack.",160,210,1);
   gameFrame.drawCentreString("Sword: 2 damage. Bow: 1 damage.",160,224,1);
+}
+
+// Two-tone peaks: lit west face, shaded east face, optional snow cap.
+void peak(int left, int top, int right, int apex, uint16_t lit, uint16_t shade, uint16_t cap) {
+  gameFrame.fillTriangle(left,ground,apex,top,apex,ground,lit);
+  gameFrame.fillTriangle(apex,top,right,ground,apex,ground,shade);
+  if (cap) {
+    int h=(ground-top)/4;
+    int l=apex-(apex-left)*h/(ground-top), r=apex+(right-apex)*h/(ground-top);
+    gameFrame.fillTriangle(l,top+h,apex,top,r,top+h,cap);
+    gameFrame.fillTriangle(l,top+h,(l+apex)/2,top+h+4,apex,top+h,cap);
+    gameFrame.fillTriangle(apex,top+h,(r+apex)/2,top+h+5,r,top+h,cap);
+  }
+}
+void tree(int x) {
+  if (level==2) {
+    gameFrame.fillRect(x,180,5,ground-180,rgb(73,36,0));
+    for (int t=0;t<3;++t) {
+      int top=112+t*20, w=14+t*6;
+      gameFrame.fillTriangle(x+2-w,top+28,x+2,top,x+2+w,top+28,rgb(0,73,85));
+      gameFrame.fillTriangle(x+2,top,x+2+w,top+28,x+2,top+28,rgb(0,36,85));
+      gameFrame.fillTriangle(x+2-w*2/3,top+12,x+2,top,x+2+w/3,top+8,TFT_WHITE);
+    }
+  } else if (level==3) {
+    // Obsidian spire with a molten seam that flickers.
+    gameFrame.fillTriangle(x-22,ground,x+2,ground-65,x+2,ground,rgb(73,36,85));
+    gameFrame.fillTriangle(x+2,ground-65,x+27,ground,x+2,ground,rgb(36,0,36));
+    uint16_t seam=((int)(animationTime*6)+x)%4 ? rgb(255,73,0) : rgb(255,219,0);
+    gameFrame.drawWideLine(x+2,ground-50,x+8,ground-30,2,seam);
+    gameFrame.drawWideLine(x+8,ground-30,x+4,ground-12,2,seam);
+  } else {
+    gameFrame.fillRect(x-1,125,7,ground-125,rgb(109,73,0));
+    gameFrame.fillRect(x+3,125,3,ground-125,rgb(73,36,0));
+    gameFrame.fillCircle(x-7,129,11,rgb(0,109,0));
+    gameFrame.fillCircle(x+12,129,11,rgb(0,109,0));
+    gameFrame.fillCircle(x+2,118,15,rgb(36,146,0));
+    gameFrame.fillCircle(x-3,113,8,rgb(73,182,0));
+    gameFrame.fillCircle(x-5,111,3,rgb(146,219,0));
+  }
+}
+// Ground band from 'from' down to the weapon bar; textures follow the camera.
+void groundStrip(int from) {
+  int scroll=(int)camera;
+  if (level==2) {
+    gameFrame.fillRect(0,from,320,weaponBarY-from,rgb(146,219,255));
+    gameFrame.fillRect(0,from,320,max(0,ground+4-from),TFT_WHITE);
+    for (int i=-1;i<12;++i) {
+      int x=i*31-scroll%31;
+      gameFrame.drawLine(x,ground+6,x+9,ground+9,rgb(109,182,255));
+    }
+  } else {
+    gameFrame.fillRect(0,from,320,weaponBarY-from,rgb(146,73,0));
+    gameFrame.fillRect(0,from,320,max(0,ground+4-from),rgb(73,182,0));
+    if (from<=ground+4) gameFrame.drawFastHLine(0,ground+4,320,rgb(36,109,0));
+    for (int i=-1;i<16;++i) {
+      int wx=(scroll/23+i)*23, x=wx-scroll+(wx*7)%11;
+      gameFrame.fillEllipse(x,ground+8+(wx/23)%3,2+(wx/23)%2,1,rgb(182,146,85));
+    }
+  }
+}
+void scenery() {
+  const uint16_t skyTop=level==3 ? rgb(36,0,0) : level==2 ? rgb(109,146,219) : rgb(36,109,255);
+  const uint16_t skyLow=level==3 ? rgb(219,73,0) : level==2 ? rgb(219,255,255) : rgb(182,219,255);
+  GameGfx::gradient(0,52,320,ground-52,skyTop,skyLow);
+  int sunX=267-(int)(camera*0.02f);
+  if (level==3) {
+    GameGfx::glow(sunX,82,30,rgb(255,73,0));
+    gameFrame.fillCircle(sunX,82,20,rgb(219,36,0));
+    gameFrame.fillCircle(sunX-6,77,4,rgb(182,36,0));
+  } else {
+    GameGfx::glow(sunX,71,23,rgb(255,255,170));
+    gameFrame.fillCircle(sunX,71,17,level==2 ? rgb(255,255,170) : rgb(255,255,85));
+  }
+  if (level!=3) {
+    for (int i=0;i<4;++i) {
+      int cx=(i*97+(int)(animationTime*5)-(int)(camera*0.08f))%400;
+      cx=(cx+400)%400-40;
+      int cy=64+(i*23)%28;
+      gameFrame.fillEllipse(cx,cy+4,22,6,rgb(219,219,255));
+      gameFrame.fillCircle(cx-8,cy,7,TFT_WHITE);
+      gameFrame.fillCircle(cx+5,cy-3,9,TFT_WHITE);
+    }
+  }
+  for (int i=-1;i<5;++i) {
+    int x=i*110-(int)(camera*0.18f)%110;
+    if (level==3) peak(x-70,80,x+140,x+45,rgb(109,36,36),rgb(73,0,36),rgb(255,73,0));
+    else if (level==2) peak(x-70,80,x+140,x+45,rgb(182,219,255),rgb(109,146,219),TFT_WHITE);
+    else peak(x-70,80,x+140,x+45,rgb(109,146,219),rgb(73,109,170),TFT_WHITE);
+    if (level==3) peak(x-30,112,x+180,x+100,rgb(73,36,36),rgb(36,0,36),0);
+    else if (level==2) peak(x-30,112,x+180,x+100,rgb(146,182,255),rgb(109,146,219),0);
+    else peak(x-30,112,x+180,x+100,rgb(73,182,85),rgb(36,146,85),0);
+  }
+  if (level==3) {
+    // Embers drift upward from the lava.
+    for (int i=0;i<14;++i) {
+      int x=(i*53-(int)(camera*0.4f))%330; x=(x+330)%330-5;
+      int y=ground-(int)fmodf(animationTime*(25+i%4*8)+i*37,150);
+      gameFrame.fillRect(x+(int)(sinf(animationTime*3+i)*3),y,2,2,i%3 ? lavaGlow : rgb(255,255,85));
+    }
+  }
+  for (int i=-1;i<6;++i) tree(i*85-(int)(camera*0.55f)%85);
+  if (level==3) {
+    // Lava sea glows beneath and around the rock causeway.
+    GameGfx::gradient(0,ground-17,320,weaponBarY-ground+17,rgb(255,219,0),rgb(219,36,0));
+    GameGfx::screenRect(0,ground-23,320,6,lavaGlow);
+    for (int i=0;i<7;++i) {
+      int x=(i*47+(int)(animationTime*20))%330-5;
+      int r=1+(int)(animationTime*3+i)%3;
+      gameFrame.drawCircle(x,ground-14+i%3*4,r,rgb(255,255,85));
+    }
+    for (int x=0;x<320;++x) {
+      int y=(int)terrain(camera+x);
+      gameFrame.drawFastVLine(x,y,weaponBarY-y,rgb(73,36,36));
+      gameFrame.drawFastVLine(x,y+2,5,rgb(109,36,36));
+      gameFrame.drawFastVLine(x,y,2,rgb(255,146,0));
+      if (((x+(int)camera)*7)%13==0) gameFrame.drawPixel(x,y+9+((x+(int)camera)%5),rgb(146,73,85));
+    }
+  } else {
+    groundStrip(ground);
+    uint16_t tuft=level==2 ? TFT_WHITE : rgb(36,146,0);
+    for (int i=0;i<25;++i) {
+      int x=i*15-(int)camera%15;
+      gameFrame.drawLine(x,ground,x+3,ground-5,tuft);
+      gameFrame.drawLine(x+3,ground,x+5,ground-3,level==2 ? rgb(182,219,255) : rgb(146,219,0));
+    }
+  }
+}
+void hudPanel(int y, int h) {
+  GameGfx::gradient(0,y,320,h,rgb(36,36,85),rgb(0,0,36));
 }
 
 void render(bool touching, uint16_t tx, uint16_t ty, int movement) {
   if (stage==CHARACTER_SELECT || stage==WEAPON_SELECT) drawSelection();
   else if (stage==ARMORY) {
-    gameFrame.fillSprite(0x1104); button(exitButton,"BACK");
-    gameFrame.setTextColor(COLOR_GOLD,0x1104);
+    GameGfx::gradient(0,0,320,240,rgb(73,0,0),rgb(36,0,36));
+    GameGfx::gradient(0,200,320,40,rgb(73,0,0),rgb(219,73,0));
+    button(exitButton,"BACK");
+    gameFrame.setTextColor(COLOR_GOLD);
     gameFrame.drawCentreString("LAVA REALM ARMORY",160,40,4);
     button(armoryChoices[0],"5 GRENADES"); button(armoryChoices[1],"SPEAR"); button(armoryChoices[2],"DOG");
+    gameFrame.setTextColor(TFT_WHITE);
     gameFrame.drawCentreString("Choose one item for the King battle",160,65,1);
     gameFrame.drawCentreString("Arc throws / reusable spear / dog: 10s",160,194,1);
     gameFrame.drawCentreString("Tap weapon button to switch, A to use",160,216,1);
   } else {
-    gameFrame.fillSprite(level==3 ? 0x3004 : level==2 ? 0xB73F : 0x967E);
-    gameFrame.fillCircle(267-(int)(camera*0.02f),61,17,0xFFE9);
-    for(int i=-1;i<5;++i) {
-      int x=i*110-(int)(camera*0.18f)%110;
-      gameFrame.fillTriangle(x-70,ground,x+45,80,x+140,ground,level==2 ? 0x8D3A : 0x750E);
-      gameFrame.fillTriangle(x-30,ground,x+100,112,x+180,ground,level==2 ? 0xBE7D : 0x4C6A);
-    }
-    for(int i=-1;i<6;++i) {
-      int x=i*85-(int)(camera*0.55f)%85;
-      gameFrame.fillRect(x,125,5,ground-125,0x82A5);
-      if (level==2) {
-        gameFrame.fillTriangle(x-19,147,x+2,107,x+23,147,0x4355);
-        gameFrame.fillTriangle(x-12,131,x+2,107,x+16,131,TFT_WHITE);
-      } else if (level==3) {
-        gameFrame.fillTriangle(x-22,ground,x+2,ground-65,x+27,ground,0x4208);
-        gameFrame.drawWideLine(x+2,119,x+9,162,3,0xF940);
-      } else gameFrame.fillCircle(x+2,123,17,0x3487);
-    }
-    gameFrame.fillRect(0,ground,320,14,level==2 ? 0x7495 : 0x9326);
-    gameFrame.fillRect(0,ground,320,5,level==2 ? TFT_WHITE : 0x5E07);
-    for(int i=0;i<25;++i) {
-      int x=i*15-(int)camera%15;
-      gameFrame.drawLine(x,ground,x+3,ground-5,level==2 ? TFT_WHITE : 0x3CA3);
-    }
-    if (level==3) {
-      gameFrame.fillRect(0,ground-17,320,weaponBarY-ground+17,0xF940);
-      for (int x=0;x<320;++x) {
-        int y=(int)terrain(camera+x);
-        gameFrame.drawFastVLine(x,y,weaponBarY-y,0x4208);
-        gameFrame.drawFastVLine(x,y,3,0xFBE0);
-      }
-    }
+    scenery();
     if (level==3 && !armoryVisited) {
       int ax=(int)(2040-camera);
-      gameFrame.fillRect(ax-25,ground-43,50,43,0x82A5);
-      gameFrame.fillTriangle(ax-31,ground-43,ax,ground-62,ax+31,ground-43,0x4208);
-      gameFrame.setTextColor(COLOR_GOLD,0x82A5);
+      gameFrame.fillRect(ax-25,ground-43,50,43,rgb(109,73,36));
+      for (int r=ground-38;r<ground;r+=8) gameFrame.drawFastHLine(ax-25,r,50,rgb(73,36,36));
+      gameFrame.fillRoundRect(ax-8,ground-20,16,20,6,rgb(36,0,0));
+      GameGfx::glow(ax,ground-8,7,lavaGlow);
+      gameFrame.fillTriangle(ax-31,ground-43,ax,ground-62,ax+31,ground-43,rgb(73,36,85));
+      gameFrame.setTextColor(COLOR_GOLD);
       gameFrame.drawCentreString("ARMORY",ax,ground-35,1);
     }
     int signX=(int)(2100-camera);
     if(signX>-50 && signX<340) {
-      gameFrame.fillRect(signX,145,4,32,0x82A5);
-      gameFrame.fillRect(signX-22,125,58,23,0x2126);
-      gameFrame.setTextColor(COLOR_GOLD,0x2126);
-      gameFrame.drawString("BOSS >",signX-18,131,1);
+      gameFrame.fillRect(signX,145,4,ground-145,rgb(109,73,0));
+      gameFrame.fillRoundRect(signX-22,125,58,23,3,rgb(109,73,0));
+      gameFrame.fillRoundRect(signX-20,127,54,19,2,rgb(146,109,36));
+      gameFrame.setTextColor(rgb(73,0,0));
+      gameFrame.drawString("BOSS >",signX-15,131,1);
     }
     for (const auto &z : zombies) if(z.hp>0) drawZombie(z.x,false,z.rising,z.hp,z.flash>0,z.attackTimer,z.spitter,terrain(z.x)-zombieFeet(z));
     if(bossActive && bossLife>0) drawZombie(bossX,true,0,bossLife,summonFlash>0,bossAttack);
     // Cover the part of rising zombies below the grass surface.
-    if (level!=3) gameFrame.fillRect(0,ground+1,320,10,level==2 ? 0xBE7D : 0x9326);
+    if (level!=3) groundStrip(ground+1);
+    for (const auto &z : zombies) if (z.hp>0 && z.rising<=0) {
+      float air=terrain(z.x)-zombieFeet(z);
+      shadow((int)(z.x-camera),(int)terrain(z.x),max(4,13-(int)(air/8)));
+    }
+    if (bossActive && bossLife>0) shadow((int)(bossX-camera),(int)terrain(bossX),24);
     if(immunity<=0 || ((int)(immunity*12)%2)==0) {
       int px=(int)(playerX-camera);
-      person(px,(int)terrain(playerX),female,facing,movement!=0);
       int feet=(int)terrain(playerX);
+      shadow(px,feet,13);
+      person(px,feet,female,facing,movement!=0);
       if (!useExtra) drawWeapon(px,feet,bow,facing,swing>0);
       else if (extra==SPEAR) {
         gameFrame.drawWideLine(px+facing*15,feet-19,px+facing*36,feet-52,3,0xDDA6);
         gameFrame.fillTriangle(px+facing*32,feet-50,px+facing*40,feet-60,px+facing*39,feet-47,TFT_WHITE);
-      } else if (extra==GRENADES && grenades>0) gameFrame.fillCircle(px+facing*17,feet-25,5,0x5E07);
+      } else if (extra==GRENADES && grenades>0) {
+        gameFrame.fillCircle(px+facing*17,feet-25,5,0x5E07);
+        gameFrame.fillCircle(px+facing*16,feet-27,1,TFT_WHITE);
+      }
     }
     for(const auto &a : arrows) if(a.active) {
       int x=(int)(a.x-camera), y=(int)a.y;
-      gameFrame.drawLine(x-a.direction*13,y,x,y,TFT_WHITE);
-      gameFrame.drawLine(x-a.direction*4,y-3,x,y,TFT_WHITE);
-      gameFrame.drawLine(x-a.direction*4,y+3,x,y,TFT_WHITE);
+      gameFrame.drawLine(x-a.direction*13,y,x,y,rgb(182,109,0));
+      gameFrame.fillTriangle(x,y-2,x+a.direction*4,y,x,y+2,TFT_WHITE);
+      gameFrame.drawLine(x-a.direction*13,y,x-a.direction*16,y-3,TFT_RED);
+      gameFrame.drawLine(x-a.direction*13,y,x-a.direction*16,y+3,TFT_RED);
     }
     for (const auto &p : thrown) if (p.active) {
       int x=(int)(p.x-camera), y=(int)p.y;
-      if (p.grenade) { gameFrame.fillCircle(x,y,5,0x5E07); gameFrame.drawLine(x,y-5,x+3,y-9,COLOR_GOLD); }
-      else { float len=sqrtf(p.vx*p.vx+p.vy*p.vy); int dx=(int)(p.vx/len*19),dy=(int)(p.vy/len*19);
+      if (p.grenade) {
+        gameFrame.fillCircle(x,y,5,0x5E07); gameFrame.fillCircle(x-1,y-2,1,TFT_WHITE);
+        gameFrame.drawLine(x,y-5,x+3,y-9,COLOR_GOLD);
+        GameGfx::glow(x+3,y-9,3,rgb(255,255,85));
+      } else { float len=sqrtf(p.vx*p.vx+p.vy*p.vy); int dx=(int)(p.vx/len*19),dy=(int)(p.vy/len*19);
         gameFrame.drawWideLine(x-dx,y-dy,x,y,3,0xDDA6); gameFrame.fillCircle(x,y,3,TFT_WHITE); }
     }
     if (dogTime>0) {
       int x=(int)(dogX-camera),y=(int)terrain(dogX);
-      gameFrame.fillRoundRect(x-13,y-18,26,12,3,0xDDA6);
-      gameFrame.fillCircle(x+10,y-20,7,0xDDA6);
-      gameFrame.fillTriangle(x+5,y-24,x+6,y-32,x+11,y-24,0x82A5);
+      uint16_t fur=rgb(219,146,85);
+      int gait=(int)(sinf(animationTime*14)*3);
+      shadow(x,y,13);
+      for (int i=-1;i<=1;i+=2) gameFrame.drawWideLine(x+i*9,y-8,x+i*9+gait*i,y,3,rgb(182,109,36));
+      gameFrame.drawWideLine(x-12,y-14,x-18,y-22+gait,3,fur);
+      gameFrame.fillRoundRect(x-13,y-18,26,12,4,fur);
+      gameFrame.fillRect(x-6,y-18,8,5,rgb(255,255,255));
+      gameFrame.fillCircle(x+10,y-20,7,fur);
+      gameFrame.fillRoundRect(x+12,y-20,7,5,2,rgb(255,219,170));
+      gameFrame.fillCircle(x+18,y-19,1,TFT_BLACK);
+      gameFrame.fillTriangle(x+5,y-24,x+6,y-32,x+11,y-24,rgb(146,73,36));
       gameFrame.fillCircle(x+13,y-22,1,TFT_BLACK);
-      for (int i=-1;i<=1;i+=2) gameFrame.drawWideLine(x+i*9,y-8,x+i*11,y,3,0xDDA6);
+      gameFrame.fillRect(x+4,y-15,6,2,TFT_RED);
     }
     drawHazards();
-    gameFrame.fillRect(0,0,320,33,0x1104);
+    hudPanel(0,33);
     button(exitButton,"BACK");
-    gameFrame.setTextColor(TFT_WHITE,0x1104);
-    gameFrame.drawString("LIFE",63,10,1);
-    gameFrame.drawRect(91,8,104,15,TFT_WHITE);
-    gameFrame.fillRect(93,10,life*20,11,life>2 ? 0x5E07 : TFT_RED);
+    for (int i=0;i<maxLife;++i) heart(72+i*17,14,i<life ? rgb(255,36,85) : rgb(73,73,109));
+    gameFrame.setTextColor(TFT_WHITE);
     char label[40];
-    snprintf(label,sizeof(label),"%d/5  %d%%",life,bossActive ? 100 : (int)(playerX/(arenaStart+40)*100));
-    gameFrame.drawRightString(label,314,10,1);
-    gameFrame.setTextColor(TFT_WHITE,0x2948);
-    gameFrame.fillRect(0,33,320,19,0x2948);
+    // Level progress track with a marker for the hero.
+    int progress=bossActive ? 100 : (int)(playerX/(arenaStart+40)*100);
+    gameFrame.drawFastHLine(170,16,110,rgb(109,109,170));
+    gameFrame.fillRect(170,15,progress*110/100,3,COLOR_MINT);
+    gameFrame.fillCircle(170+progress*110/100,16,3,TFT_WHITE);
+    gameFrame.fillTriangle(284,10,284,22,292,16,TFT_RED);
+    snprintf(label,sizeof(label),"%d%%",progress);
+    gameFrame.drawRightString(label,316,12,1);
+    GameGfx::gradient(0,33,320,19,rgb(73,36,109),rgb(36,36,85));
+    gameFrame.drawFastHLine(0,51,320,panelEdge);
+    gameFrame.setTextColor(TFT_WHITE);
     if(bossActive) {
+      gameFrame.setTextColor(COLOR_GOLD);
       gameFrame.drawString(level==3 ? "KING" : level==2 ? "WARLORD" : "CHIEFTAIN",5,38,1);
+      gameFrame.fillRect(66,37,102,10,TFT_BLACK);
       gameFrame.drawRect(66,37,102,10,TFT_WHITE);
-      gameFrame.fillRect(67,38,bossLife*100/(level==3 ? 15 : 10),8,0xE986);
+      int bossFill=bossLife*100/(level==3 ? 15 : 10);
+      GameGfx::gradient(67,38,bossFill,8,rgb(255,109,85),rgb(146,0,0));
+      gameFrame.setTextColor(TFT_WHITE);
       snprintf(label,sizeof(label),"%d/%d %s:%ds",bossLife,level==3 ? 15 : 10,level==2 ? "SPIKE" : "RAISE",(int)ceilf(level==2 ? spikeTimer : summonTimer));
       gameFrame.drawRightString(label,315,38,1);
       if(summonFlash>0) {
-        gameFrame.setTextColor(COLOR_GOLD,0x2948);
+        gameFrame.setTextColor(rgb(36,0,0));
+        gameFrame.drawCentreString("THE DEAD RISE!",161,59,2);
+        gameFrame.setTextColor(COLOR_GOLD);
         gameFrame.drawCentreString("THE DEAD RISE!",160,58,2);
       }
     } else gameFrame.drawCentreString(level==3 ? "LEVEL 3: LAVA REALM  >>" : level==2 ? "LEVEL 2: ICELAND  >>" : "LEVEL 1: GRASSLANDS  >>",160,38,1);
     if (level==2 && animationTime<6) {
-      gameFrame.setTextColor(0x1104,0xB73F);
+      gameFrame.setTextColor(rgb(0,0,85));
       gameFrame.drawCentreString("Dodge spit. Avoid red spike marks!",160,56,1);
     }
-    gameFrame.fillRect(0,weaponBarY,320,240-weaponBarY,0x1104);
-    gameFrame.setTextColor(TFT_WHITE,0x1104);
+    hudPanel(weaponBarY,240-weaponBarY);
+    gameFrame.drawFastHLine(0,weaponBarY,320,panelEdge);
+    gameFrame.setTextColor(TFT_WHITE);
     if (!useExtra || extra==NONE) snprintf(label,sizeof(label),"WEAPON: %s",bow ? "BOW" : "SWORD");
     else if (extra==GRENADES) snprintf(label,sizeof(label),"WEAPON: BOMBS (%d)",grenades);
     else if (extra==SPEAR) snprintf(label,sizeof(label),"WEAPON: SPEAR");
     else snprintf(label,sizeof(label),"WEAPON: DOG (%ds)",dogAvailable ? 10 : (int)ceilf(dogTime));
     gameFrame.drawCentreString(label,160,weaponBarY+3,2);
     if(stage==LEVEL_COMPLETE || stage==VICTORY || stage==DEFEAT) {
-      gameFrame.fillRoundRect(24,56,272,128,10,0x1104);
-      gameFrame.setTextColor(COLOR_GOLD,0x1104);
+      GameGfx::darkenRect(0,52,320,weaponBarY-52);
+      GameGfx::gradient(26,58,268,124,rgb(73,36,109),panel);
+      gameFrame.drawRoundRect(24,56,272,128,10,stage==DEFEAT ? TFT_RED : COLOR_GOLD);
+      gameFrame.drawRoundRect(25,57,270,126,9,panelEdge);
+      gameFrame.setTextColor(stage==DEFEAT ? rgb(255,73,85) : COLOR_GOLD);
       gameFrame.drawCentreString(stage==DEFEAT ? "YOU FELL!" : stage==LEVEL_COMPLETE ? "LEVEL COMPLETE!" : "KING DEFEATED!",160,69,4);
+      gameFrame.setTextColor(TFT_WHITE);
       if (stage==VICTORY) {
+        GameGfx::glow(47,104,14,COLOR_GOLD);
         gameFrame.fillRect(39,94,16,12,COLOR_GOLD);
         gameFrame.fillRect(45,106,4,7,COLOR_GOLD);
         gameFrame.fillRect(39,113,16,3,COLOR_GOLD);
         gameFrame.drawCircle(38,99,5,COLOR_GOLD); gameFrame.drawCircle(56,99,5,COLOR_GOLD);
+        gameFrame.drawFastVLine(42,96,8,TFT_WHITE);
         snprintf(label,sizeof(label),"Trophy + crown unlocked!");
       } else snprintf(label,sizeof(label),"%d zombies defeated",kills);
       gameFrame.drawCentreString(label,160,102,2);

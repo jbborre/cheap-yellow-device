@@ -1,6 +1,7 @@
 #pragma once
 #include "GameAudio.h"
 #include "DamageLed.h"
+#include "GameGfx.h"
 #include <math.h>
 
 // A small pseudo-3D renderer: world coordinates project toward a fixed horizon.
@@ -32,22 +33,55 @@ void quad(int ax, int ay, int bx, int by, int cx, int cy, int dx, int dy, uint16
   gameFrame.fillTriangle(ax, ay, bx, by, cx, cy, color);
   gameFrame.fillTriangle(ax, ay, cx, cy, dx, dy, color);
 }
+using GameGfx::rgb;
+const uint16_t trafficColors[6]={rgb(219,36,0),rgb(255,219,0),rgb(36,109,255),
+                                 rgb(219,219,255),rgb(182,36,170),rgb(255,146,0)};
+const uint16_t facadeColors[4]={rgb(109,73,170),rgb(73,109,170),rgb(146,73,85),rgb(73,146,170)};
+const uint16_t haze=rgb(219,109,170), windowLit=rgb(255,219,85), windowDark=rgb(36,36,85);
+bool braking = false;
+
 void resetTraffic(int i, float z) {
   traffic[i] = {(float)((i % 3 - 1) * 3), z, (float)random(5, 12),
-                i % 2 ? (uint16_t)0xFE20 : (uint16_t)0xB19F};
+                trafficColors[(i+random(0,6))%6]};
 }
-void car(int x, int bottom, int w, uint16_t color) {
+// Rear view of a car; detail drops away as it shrinks into the distance.
+void car(int x, int bottom, int w, uint16_t color, bool brakes = false, bool player = false) {
   int h = w * 3 / 4;
-  gameFrame.fillEllipse(x, bottom, w / 2 + 3, max(2, w / 8), 0x2104);
-  gameFrame.fillRect(x - w / 2, bottom - h / 2, max(2, w / 7), h / 2, TFT_BLACK);
-  gameFrame.fillRect(x + w / 2 - max(2, w / 7), bottom - h / 2, max(2, w / 7), h / 2, TFT_BLACK);
-  quad(x-w/2, bottom-2, x-w/2+2, bottom-h/2, x+w/2-2, bottom-h/2, x+w/2, bottom-2, color);
-  quad(x-w/3, bottom-h/2, x-w/4, bottom-h, x+w/4, bottom-h, x+w/3, bottom-h/2, color);
-  quad(x-w/4, bottom-h/2-2, x-w/5, bottom-h+3, x+w/5, bottom-h+3, x+w/4, bottom-h/2-2, 0x3250);
-  gameFrame.drawFastHLine(x-w/3, bottom-5, w*2/3, TFT_WHITE);
-  gameFrame.fillRect(x-w/2+3, bottom-h/3, max(2,w/6), max(2,h/7), TFT_RED);
-  gameFrame.fillRect(x+w/2-3-max(2,w/6), bottom-h/3, max(2,w/6), max(2,h/7), TFT_RED);
+  if (w < 9) {
+    gameFrame.fillRect(x-w/2, bottom-h, w, h, color);
+    gameFrame.drawFastHLine(x-w/2, bottom-h/2, w, TFT_RED);
+    return;
+  }
+  const uint16_t shade=GameGfx::darker(color), shine=GameGfx::lighter(color);
+  int wheel=max(2,w/7), cab=bottom-h/2;
+  GameGfx::darkenEllipse(x, bottom, w/2+w/6, max(2,w/9));
+  gameFrame.fillRoundRect(x-w/2, bottom-h/3, wheel, h/3, max(1,wheel/3), TFT_BLACK);
+  gameFrame.fillRoundRect(x+w/2-wheel, bottom-h/3, wheel, h/3, max(1,wheel/3), TFT_BLACK);
+  // Cabin, tinted rear glass with a diagonal glint, then the wider lower body.
+  quad(x-w/3, cab+1, x-w/4, bottom-h, x+w/4, bottom-h, x+w/3, cab+1, shade);
+  quad(x-w/4+1, cab, x-w/5, bottom-h+2, x+w/5, bottom-h+2, x+w/4-1, cab, rgb(36,73,109));
+  gameFrame.drawLine(x-w/8, cab-1, x, bottom-h+3, rgb(146,182,255));
+  gameFrame.drawFastHLine(x-w/4+1, bottom-h, w/2-2, shine);
+  quad(x-w/2, bottom-3, x-w/2+2, cab, x+w/2-2, cab, x+w/2, bottom-3, color);
+  gameFrame.drawFastHLine(x-w/2+2, cab, w-4, shine);
+  gameFrame.fillRect(x-w/2+1, bottom-h/4, w-2, max(2,h/7), shade);
+  if (player) {
+    // Twin racing stripes run over the roof and down the trunk.
+    gameFrame.fillRect(x-4, bottom-h, 3, h-h/4, TFT_WHITE);
+    gameFrame.fillRect(x+1, bottom-h, 3, h-h/4, TFT_WHITE);
+  }
+  int lamp=max(2,w/6), lampH=max(2,h/7), lampY=bottom-h/3-1;
+  uint16_t lit = brakes ? rgb(255,73,85) : rgb(182,0,0);
+  gameFrame.fillRect(x-w/2+2, lampY, lamp, lampH, lit);
+  gameFrame.fillRect(x+w/2-2-lamp, lampY, lamp, lampH, lit);
+  if (brakes) {
+    GameGfx::glow(x-w/2+2+lamp/2, lampY+lampH/2, lamp+2, TFT_RED);
+    GameGfx::glow(x+w/2-2-lamp/2, lampY+lampH/2, lamp+2, TFT_RED);
+  }
+  if (w >= 16 && !player) gameFrame.fillRect(x-w/8, bottom-h/4-1, w/4, max(2,h/8), TFT_WHITE);
+  gameFrame.drawFastHLine(x-w/2+1, bottom-3, w-2, rgb(36,36,85));
 }
+// Distance fades facades toward the dusk haze; nearer floors show lit windows.
 void building(float x, float z, int index) {
   const float width = 3.5f, height = 5.0f + (index % 4) * 2;
   int a = projectX(x, z), b = projectX(x + width, z);
@@ -55,39 +89,90 @@ void building(float x, float z, int index) {
   int rear = projectX(x < 0 ? x : x+width, z + 4);
   int rearBase = projectY(z + 4), rearTop = rearBase - (int)(height*focal/(z+4));
   int edge = x < 0 ? b : a;
-  quad(edge,top,rear,rearTop,rear,rearBase,edge,base,0x2949);
-  gameFrame.fillRect(a, top, max(1,b-a), base-top, index%2 ? 0x52D1 : 0x6474);
-  if (b-a > 7) {
-    int step = max(4,(b-a)/4);
-    for (int wy=max(32,top+4); wy<min(240,base-3); wy+=step+2)
-      for (int wx=max(0,a+3); wx<min(320,b-2); wx+=step)
-        gameFrame.fillRect(wx,wy,max(1,step/2),2,0xFFE9);
+  int fog = constrain((int)(z*1.4f)-14, 0, 80);
+  uint16_t face = GameGfx::mix565(facadeColors[(index*5+(x<0))%4], haze, fog, 100);
+  quad(edge,top,rear,rearTop,rear,rearBase,edge,base,GameGfx::darker(face));
+  gameFrame.fillRect(a, top, max(1,b-a), base-top, face);
+  gameFrame.drawFastHLine(a, top, max(1,b-a), GameGfx::lighter(face));
+  int floors = (int)height, floorH = (base-top)/floors;
+  if (b-a > 9 && floorH >= 3) {
+    uint16_t lit = GameGfx::mix565(windowLit, face, fog, 100);
+    uint16_t dark = GameGfx::mix565(windowDark, face, fog, 100);
+    int cols = (b-a) >= 40 ? 4 : 3, colW = (b-a)/cols;
+    int ww = max(1,colW/2), wh = max(1,floorH/2);
+    for (int f=1; f<floors; ++f) {
+      int wy = top + f*floorH - floorH/2 - wh/2;
+      for (int c=0; c<cols; ++c) {
+        bool on = ((index*31 + f*7 + c*13) % 5) < 3;
+        gameFrame.fillRect(a + c*colW + (colW-ww)/2, wy, ww, wh, on ? lit : dark);
+      }
+    }
+    // Lit shopfront under an awning at street level.
+    int shop = max(2,floorH-1);
+    gameFrame.fillRect(a+2, base-shop, b-a-4, shop, lit);
+    gameFrame.fillRect(a+1, base-shop-2, b-a-2, 2, trafficColors[index%6]);
+  } else if (b-a > 3) {
+    for (int wy=top+2; wy<base-1; wy+=3) gameFrame.drawFastHLine(a+1, wy, b-a-2, GameGfx::darker(face));
   }
 }
-void render(bool touching, uint16_t tx, uint16_t ty) {
-  gameFrame.fillSprite(0x8E7D);
-  gameFrame.fillCircle(257,48,16,0xFFE9);
-  for (int i=0;i<20;++i) {
-    int h=12+(i*17)%29;
-    gameFrame.fillRect(i*17,horizon-h,14,h,0x7474);
+// Curbside lamp post whose head throws a soft halo.
+void lamp(float x, float z) {
+  if (z < nearZ+1) return;
+  int px = projectX(x, z), base = projectY(z);
+  int top = base - (int)(5.0f*focal/z), arm = (int)(1.0f*focal/z) * (x < 0 ? 1 : -1);
+  int thick = max(1, (int)(0.25f*focal/z));
+  gameFrame.fillRect(px-thick/2, top, thick, base-top, rgb(36,36,85));
+  gameFrame.drawWideLine(px, top, px+arm, top, max(1,thick), rgb(36,36,85));
+  GameGfx::glow(px+arm, top+thick, max(2,thick*3), rgb(255,219,170));
+  gameFrame.fillCircle(px+arm, top+thick, max(1,thick), rgb(255,255,170));
+}
+void skyline(int offset, int seed, int minH, int range, uint16_t color, bool windows) {
+  for (int i=-1;i<18;++i) {
+    int w = 14 + (i*seed)%11, x = i*20 + ((offset%20)+20)%20 - 20;
+    int h = minH + (i*seed*7 + seed)%range;
+    gameFrame.fillRect(x, horizon-h, w, h, color);
+    if (windows)
+      for (int wy=horizon-h+3; wy<horizon-2; wy+=4)
+        for (int wx=x+2; wx<x+w-2; wx+=4)
+          if (((wx-x)*3+wy*5+i*7)%7==0) gameFrame.drawPixel(wx, wy, windowLit);
   }
-  gameFrame.fillRect(0,horizon,320,177,0x7BCF);
-  for (int y=horizon+1;y<240;++y) {
-    float z=cameraHeight*focal/(y-horizon);
+}
+void heart(int x, int y, uint16_t color) {
+  gameFrame.fillCircle(x-3, y, 3, color); gameFrame.fillCircle(x+3, y, 3, color);
+  gameFrame.fillTriangle(x-6, y+1, x+6, y+1, x, y+7, color);
+}
+void render(bool touching, uint16_t tx, uint16_t ty) {
+  GameGfx::gradient(0, 31, 320, horizon-31, rgb(36,36,85), rgb(255,146,85));
+  GameGfx::glow(250, 54, 24, rgb(255,182,85));
+  gameFrame.fillCircle(250, 54, 13, rgb(255,219,85));
+  for (int y=54; y<horizon; y+=3) gameFrame.drawFastHLine(236, y, 28, rgb(255,146,85));
+  skyline((int)(-playerX*2), 7, 10, 16, rgb(109,36,109), false);
+  skyline((int)(-playerX*4)+9, 5, 5, 12, rgb(36,36,85), true);
+  for (int y=horizon; y<240; ++y) {
+    float z=cameraHeight*focal/(y-horizon+1);
     int left=projectX(-5.5f,z), right=projectX(5.5f,z);
-    gameFrame.drawFastHLine(left-5,y,right-left+10,0xDEDB);
-    gameFrame.drawFastHLine(left,y,right-left,0x3186);
-    if (((int)(z+position)/4)%2 == 0) {
+    int band=(int)(z+position);
+    int curb=max(1,(right-left)/24);
+    int walkL=projectX(-7.5f,z), walkR=projectX(7.5f,z);
+    gameFrame.drawFastHLine(0,y,320,rgb(36,36,85));
+    gameFrame.drawFastHLine(walkL,y,walkR-walkL,(band/3)%2 ? rgb(109,109,170) : rgb(146,146,170));
+    gameFrame.drawFastHLine(left-curb,y,right-left+2*curb,(band/2)%2 ? rgb(219,36,0) : rgb(219,219,255));
+    gameFrame.drawFastHLine(left,y,right-left,rgb(73,73,85));
+    if ((band/4)%2) GameGfx::screenSpan(left,right,y,GameGfx::pack(rgb(36,36,85)));
+    if ((band/4)%2 == 0) {
       int stripe=max(1,(y-horizon)/45);
-      gameFrame.drawFastHLine(projectX(-1.83f,z),y,stripe,TFT_WHITE);
-      gameFrame.drawFastHLine(projectX(1.83f,z),y,stripe,TFT_WHITE);
+      gameFrame.drawFastHLine(projectX(-1.83f,z)-stripe/2,y,stripe,TFT_WHITE);
+      gameFrame.drawFastHLine(projectX(1.83f,z)-stripe/2,y,stripe,TFT_WHITE);
     }
   }
   for (int i=12;i>=0;--i) {
     float z=nearZ+i*8+8-fmodf(position,8);
     int block=(int)(position/8)+i;
     building(-10,z,block); building(6.5f,z,block+2);
+    lamp(-6.0f,z); lamp(6.0f,z);
   }
+  // Haze where the road meets the skyline hides the low-resolution far end.
+  GameGfx::screenRect(0, horizon-3, 320, 6, haze);
   // Painter's order is essential when cars in the same lane overlap.
   int order[6]={0,1,2,3,4,5};
   for(int i=0;i<5;++i) for(int j=i+1;j<6;++j)
@@ -97,21 +182,40 @@ void render(bool touching, uint16_t tx, uint16_t ty) {
     if(c.z>nearZ) car(projectX(c.x,c.z),projectY(c.z),max(3,(int)(1.7f*focal/c.z)),c.color);
   }
   if(invulnerable<=0 || ((int)(invulnerable*10)%2)==0)
-    car(projectX(playerX,playerZ),playerBottom,38,0x07F0);
-  gameFrame.fillRect(0,0,320,31,0x1084);
-  gameFrame.drawRoundRect(5,4,52,26,5,TFT_WHITE);
-  gameFrame.setTextColor(TFT_WHITE,0x1084);
-  gameFrame.drawString("BACK",13,9,2);
+    car(projectX(playerX,playerZ),playerBottom,40,rgb(0,219,170),braking && !finished,true);
+  if (invulnerable>1.4f) GameGfx::screenRect(0,31,320,209,TFT_RED);
+  GameGfx::gradient(0,0,320,31,rgb(36,36,85),rgb(0,0,0));
+  gameFrame.drawFastHLine(0,30,320,rgb(255,146,85));
+  gameFrame.fillRoundRect(5,4,52,23,5,rgb(73,36,109));
+  gameFrame.drawRoundRect(5,4,52,23,5,TFT_WHITE);
+  gameFrame.setTextColor(TFT_WHITE,rgb(73,36,109));
+  gameFrame.drawString("BACK",13,8,2);
   char hud[64];
-  snprintf(hud,sizeof(hud),"%d km/h  %dm  %d/3",(int)(speed*3.6f),(int)distance,damage);
-  gameFrame.drawRightString(hud,315,9,2);
+  snprintf(hud,sizeof(hud),"%d",(int)(speed*3.6f));
+  gameFrame.setTextColor(TFT_WHITE);
+  gameFrame.drawRightString(hud,98,6,2);
+  gameFrame.setTextColor(rgb(182,182,170));
+  gameFrame.drawString("km/h",101,12,1);
+  // Speed bar shifts from green to red as the car approaches top speed.
+  gameFrame.drawRect(66,22,60,5,rgb(109,109,170));
+  int fill=(int)(speed/30.0f*58);
+  gameFrame.fillRect(67,23,fill,3,GameGfx::mix565(rgb(0,255,85),rgb(255,36,0),fill,58));
+  snprintf(hud,sizeof(hud),"%dm",(int)distance);
+  gameFrame.setTextColor(rgb(255,219,85));
+  gameFrame.drawCentreString(hud,186,8,2);
+  for (int i=0;i<3;++i) heart(260+i*19,12,i<3-damage ? rgb(255,36,85) : rgb(73,73,85));
   if(finished) {
-    gameFrame.fillRoundRect(35,67,250,108,10,0x1084);
-    gameFrame.setTextColor(COLOR_GOLD,0x1084);
+    GameGfx::darkenRect(0,31,320,209);
+    gameFrame.fillRoundRect(35,67,250,108,10,rgb(36,36,85));
+    gameFrame.drawRoundRect(35,67,250,108,10,rgb(255,146,85));
+    gameFrame.drawRoundRect(36,68,248,106,9,rgb(146,73,170));
+    gameFrame.setTextColor(COLOR_GOLD,rgb(36,36,85));
     gameFrame.drawCentreString("DRIVE COMPLETE",160,77,4);
+    gameFrame.setTextColor(TFT_WHITE,rgb(36,36,85));
     snprintf(hud,sizeof(hud),"%dm driven - %d cars passed",(int)distance,passed);
     gameFrame.drawCentreString(hud,160,109,2);
     gameFrame.fillRoundRect(90,133,140,38,6,0x0357);
+    gameFrame.drawRoundRect(90,133,140,38,6,rgb(146,219,255));
     gameFrame.setTextColor(TFT_WHITE,0x0357);
     gameFrame.drawCentreString("TRY AGAIN",160,143,2);
   }
@@ -146,6 +250,7 @@ void updateCityDrive(uint32_t now, bool touching, bool tapped, uint16_t x, uint1
   bool right=buttons & 0x02;
   bool gas=buttons & 0x04;
   bool brake=buttons & 0x08;
+  braking=brake;
   steering=(int)right-(int)left;
   if(brake) acceleration=-18.0f;
   else if(gas) acceleration=9.0f;
