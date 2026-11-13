@@ -36,7 +36,7 @@ ESP32-32E identifies the processor module, not the display board's pinout. The p
 | Touch CS / IRQ | 33 / 36 | 33 / 36 |
 | Display SPI clock | 40 MHz | 55 MHz |
 
-If the board uses different wiring, update the display flags in `platformio.ini` and the touch configuration near the top of `auggie_game_saucer.ino` to match its schematic. A capacitive touch controller needs a different touch implementation. SPI runs at 40 MHz for the ST7796S target.
+If the board uses different wiring, update the display flags in `platformio.ini` and the touch configuration near the top of `main.ino` to match its schematic. A capacitive touch controller needs a different touch implementation. SPI runs at 40 MHz for the ST7796S target.
 
 PlatformIO supplies the driver configuration through build flags; `include/User_Setup.h` is not used by these builds. Existing ILI9341 hardware can still use `pio run -e cyd` or `pio run -e cyd2usb`.
 
@@ -72,8 +72,8 @@ battery sensing disabled unless `BATTERY_ADC_PIN` and, if necessary,
 `BATTERY_DIVIDER` are configured for their hardware.
 
 The home-screen gear opens sound settings. Select Sound to toggle audio, or
-select the minus/plus buttons to adjust the DAC amplitude (mute, 12%, 25%, 50%,
-100%). Settings support touch and the same P0/P1/P2/P3 menu controls, and are
+select the minus/plus buttons to change volume in 10% steps. The DAC has four
+amplitudes (12%, 25%, 50%, 100%), so each percentage uses the nearest one. Settings support touch and the same P0/P1/P2/P3 menu controls, and are
 saved across restarts. The rounded gold outline marks the selected menu item.
 
 On the ELEGOO ILI9341 profile, accepted damage in Zombie Crash or City Drive

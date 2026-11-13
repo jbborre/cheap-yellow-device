@@ -17,6 +17,17 @@ struct Traffic { float x, z, speed; uint16_t color; };
 Traffic traffic[6];
 float position = 0, playerX = 0, speed = 0, distance = 0;
 float invulnerable = 0;
+// Road bend: curve eases toward curveTarget; skyShift pans the skyline.
+float curve = 0, curveTarget = 0, nextBend = 150, skyShift = 0;
+// Police chase: gap is meters between the cop and the player.
+constexpr float mph = 2.237f;                // m/s to mph
+constexpr float topSpeed = 45.0f;            // ~100 mph
+constexpr float copTriggerSpeed = 75 / mph;  // 75 mph
+constexpr float copTriggerStep = 800;        // meters between possible chases
+constexpr float copSpeed = 40.0f;            // ~90 mph
+float copGap = 0, nextCopAt = copTriggerStep, sirenTimer = 0;
+bool chased = false, busted = false;
+int escapes = 0;
 uint32_t lastFrame = 0;
 int damage = 0, passed = 0;
 bool finished = false;
@@ -27,7 +38,8 @@ const TouchButton gasButton = {255, 194, 59, 42};
 const TouchButton exitButton = {5, 4, 52, 26};
 const TouchButton retryButton = {90, 133, 140, 38};
 
-int projectX(float x, float z) { return 160 + (int)((x - playerX * 0.65f) * focal / z); }
+// Curvature shifts points sideways in proportion to depth, bending the whole scene.
+int projectX(float x, float z) { return 160 + (int)((x - playerX * 0.65f) * focal / z + curve * 0.4f * z); }
 int projectY(float z) { return horizon + (int)(cameraHeight * focal / z); }
 void quad(int ax, int ay, int bx, int by, int cx, int cy, int dx, int dy, uint16_t color) {
   gameFrame.fillTriangle(ax, ay, bx, by, cx, cy, color);
@@ -141,13 +153,32 @@ void heart(int x, int y, uint16_t color) {
   gameFrame.fillCircle(x-3, y, 3, color); gameFrame.fillCircle(x+3, y, 3, color);
   gameFrame.fillTriangle(x-6, y+1, x+6, y+1, x, y+7, color);
 }
+// Rear-view mirror showing the pursuing cop car, which grows as it closes in.
+void mirror(bool flash) {
+  const int mx=136, my=3, mw=100, mh=25;
+  gameFrame.fillRoundRect(mx-2,my-1,mw+4,mh+3,7,rgb(36,36,36));
+  gameFrame.fillRoundRect(mx,my,mw,mh,6,rgb(36,36,85));
+  quad(mx+mw/2-6,my+6,mx+mw/2+6,my+6,mx+mw-10,my+mh,mx+10,my+mh,rgb(73,73,85));
+  const int w=constrain((int)(44-copGap*0.35f),6,40), cx=mx+mw/2, base=my+mh-2;
+  const int h=w/2;
+  gameFrame.fillRoundRect(cx-w/2,base-h,w,h,max(1,w/8),TFT_WHITE);
+  gameFrame.fillRect(cx-w/2,base-h/2,w,h/2,TFT_BLACK);
+  gameFrame.fillRect(cx-w/3,base-h+1,w*2/3,max(1,h/3),rgb(36,73,109));
+  const int bar=max(2,w/8);
+  gameFrame.fillRect(cx-w/4,base-h-bar,w/4,bar,flash ? TFT_RED : rgb(73,0,0));
+  gameFrame.fillRect(cx,base-h-bar,w/4,bar,flash ? rgb(0,0,85) : rgb(36,109,255));
+  gameFrame.fillRect(cx-w/2+1,base-h/2-1,max(1,w/6),max(1,h/4),rgb(255,255,170));
+  gameFrame.fillRect(cx+w/2-1-max(1,w/6),base-h/2-1,max(1,w/6),max(1,h/4),rgb(255,255,170));
+  gameFrame.drawRoundRect(mx-2,my-1,mw+4,mh+3,7,rgb(146,146,170));
+}
 void render(bool touching, uint16_t tx, uint16_t ty) {
   GameGfx::gradient(0, 31, 320, horizon-31, rgb(36,36,85), rgb(255,146,85));
-  GameGfx::glow(250, 54, 24, rgb(255,182,85));
-  gameFrame.fillCircle(250, 54, 13, rgb(255,219,85));
-  for (int y=54; y<horizon; y+=3) gameFrame.drawFastHLine(236, y, 28, rgb(255,146,85));
-  skyline((int)(-playerX*2), 7, 10, 16, rgb(109,36,109), false);
-  skyline((int)(-playerX*4)+9, 5, 5, 12, rgb(36,36,85), true);
+  const int sunX = ((int)(250 + skyShift*0.5f) % 400 + 400) % 400 - 40;
+  GameGfx::glow(sunX, 54, 24, rgb(255,182,85));
+  gameFrame.fillCircle(sunX, 54, 13, rgb(255,219,85));
+  for (int y=54; y<horizon; y+=3) gameFrame.drawFastHLine(sunX-14, y, 28, rgb(255,146,85));
+  skyline((int)(skyShift-playerX*2), 7, 10, 16, rgb(109,36,109), false);
+  skyline((int)(skyShift*2-playerX*4)+9, 5, 5, 12, rgb(36,36,85), true);
   for (int y=horizon; y<240; ++y) {
     float z=cameraHeight*focal/(y-horizon+1);
     int left=projectX(-5.5f,z), right=projectX(5.5f,z);
@@ -184,6 +215,12 @@ void render(bool touching, uint16_t tx, uint16_t ty) {
   if(invulnerable<=0 || ((int)(invulnerable*10)%2)==0)
     car(projectX(playerX,playerZ),playerBottom,40,rgb(0,219,170),braking && !finished,true);
   if (invulnerable>1.4f) GameGfx::screenRect(0,31,320,209,TFT_RED);
+  const bool flash=(millis()/200)%2;
+  if (chased && !finished && copGap<40) {
+    // Red and blue light washes the screen edges as the cop closes in.
+    gameFrame.fillRect(0,31,5,209,flash ? TFT_RED : rgb(36,109,255));
+    gameFrame.fillRect(315,31,5,209,flash ? rgb(36,109,255) : TFT_RED);
+  }
   GameGfx::gradient(0,0,320,31,rgb(36,36,85),rgb(0,0,0));
   gameFrame.drawFastHLine(0,30,320,rgb(255,146,85));
   gameFrame.fillRoundRect(5,4,52,23,5,rgb(73,36,109));
@@ -191,28 +228,33 @@ void render(bool touching, uint16_t tx, uint16_t ty) {
   gameFrame.setTextColor(TFT_WHITE,rgb(73,36,109));
   gameFrame.drawString("BACK",13,8,2);
   char hud[64];
-  snprintf(hud,sizeof(hud),"%d",(int)(speed*3.6f));
+  snprintf(hud,sizeof(hud),"%d",(int)(speed*mph));
   gameFrame.setTextColor(TFT_WHITE);
   gameFrame.drawRightString(hud,98,6,2);
   gameFrame.setTextColor(rgb(182,182,170));
-  gameFrame.drawString("km/h",101,12,1);
+  gameFrame.drawString("mph",101,12,1);
   // Speed bar shifts from green to red as the car approaches top speed.
   gameFrame.drawRect(66,22,60,5,rgb(109,109,170));
-  int fill=(int)(speed/30.0f*58);
+  int fill=(int)(speed/topSpeed*58);
+  // Tick at 75 mph marks where speeding draws the police.
+  gameFrame.drawFastVLine(67+(int)(copTriggerSpeed/topSpeed*58),20,9,rgb(255,255,170));
   gameFrame.fillRect(67,23,fill,3,GameGfx::mix565(rgb(0,255,85),rgb(255,36,0),fill,58));
-  snprintf(hud,sizeof(hud),"%dm",(int)distance);
-  gameFrame.setTextColor(rgb(255,219,85));
-  gameFrame.drawCentreString(hud,186,8,2);
+  if (chased && !finished) mirror(flash);
+  else {
+    snprintf(hud,sizeof(hud),"%.2f mi",distance/1609.34f);
+    gameFrame.setTextColor(rgb(255,219,85));
+    gameFrame.drawCentreString(hud,186,8,2);
+  }
   for (int i=0;i<3;++i) heart(260+i*19,12,i<3-damage ? rgb(255,36,85) : rgb(73,73,85));
   if(finished) {
     GameGfx::darkenRect(0,31,320,209);
     gameFrame.fillRoundRect(35,67,250,108,10,rgb(36,36,85));
     gameFrame.drawRoundRect(35,67,250,108,10,rgb(255,146,85));
     gameFrame.drawRoundRect(36,68,248,106,9,rgb(146,73,170));
-    gameFrame.setTextColor(COLOR_GOLD,rgb(36,36,85));
-    gameFrame.drawCentreString("DRIVE COMPLETE",160,77,4);
+    gameFrame.setTextColor(busted ? rgb(255,73,85) : COLOR_GOLD,rgb(36,36,85));
+    gameFrame.drawCentreString(busted ? "BUSTED!" : "DRIVE COMPLETE",160,77,4);
     gameFrame.setTextColor(TFT_WHITE,rgb(36,36,85));
-    snprintf(hud,sizeof(hud),"%dm driven - %d cars passed",(int)distance,passed);
+    snprintf(hud,sizeof(hud),"%.2f mi - %d passed - %d escapes",distance/1609.34f,passed,escapes);
     gameFrame.drawCentreString(hud,160,109,2);
     gameFrame.fillRoundRect(90,133,140,38,6,0x0357);
     gameFrame.drawRoundRect(90,133,140,38,6,rgb(146,219,255));
@@ -230,7 +272,8 @@ void beginCityDrive() {
   using namespace CityDrive;
   gameState=CITY_DRIVING;
   position=playerX=speed=distance=invulnerable=0;
-  damage=passed=0; finished=false;
+  damage=passed=escapes=0; finished=busted=chased=false;
+  curve=curveTarget=skyShift=0; nextBend=150; nextCopAt=copTriggerStep;
   for(int i=0;i<6;++i) resetTraffic(i,25+i*15);
   lastFrame=millis();
   render(false,0,0);
@@ -253,10 +296,33 @@ void updateCityDrive(uint32_t now, bool touching, bool tapped, uint16_t x, uint1
   braking=brake;
   steering=(int)right-(int)left;
   if(brake) acceleration=-18.0f;
-  else if(gas) acceleration=9.0f;
-  speed=constrain(speed+acceleration*dt,0.0f,30.0f);
-  playerX=constrain(playerX+steering*dt*(1.0f+speed*0.12f),-4.6f,4.6f);
+  else if(gas) acceleration=9.0f-speed*0.12f;
+  speed=constrain(speed+acceleration*dt,0.0f,topSpeed);
+  // New bends every 120-260 m; about a third of the road stays straight.
+  if(distance>=nextBend) {
+    const float bends[]={-1.0f,-0.6f,0,0,0.6f,1.0f};
+    curveTarget=bends[random(0,6)];
+    nextBend=distance+random(120,260);
+  }
+  curve+=(curveTarget-curve)*min(1.0f,dt*0.8f);
+  skyShift-=curve*speed*dt*0.6f;
+  // Curves push the car toward the outside; steer into them to stay on the road.
+  playerX=constrain(playerX+steering*dt*(1.0f+speed*0.12f)-curve*speed*dt*0.09f,-4.6f,4.6f);
   distance+=speed*dt;
+  if(!chased && distance>=nextCopAt && speed>copTriggerSpeed) {
+    chased=true; copGap=70; sirenTimer=0;
+    GameAudio::play(GameAudio::Siren);
+  }
+  if(chased) {
+    copGap+=(speed-copSpeed)*dt;
+    sirenTimer-=dt;
+    if(sirenTimer<=0) { GameAudio::play(GameAudio::Siren); sirenTimer=0.7f; }
+    if(copGap<=0) { finished=busted=true; GameAudio::play(GameAudio::Lose); }
+    else if(copGap>130) {
+      chased=false; ++escapes; nextCopAt=distance+copTriggerStep;
+      GameAudio::play(GameAudio::Win);
+    }
+  }
   position=fmodf(position+speed*dt,8000.0f);
   invulnerable=max(0.0f,invulnerable-dt);
   for(int i=0;i<6;++i) {

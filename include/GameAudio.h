@@ -16,7 +16,7 @@
 // waveform; update() only schedules notes, without delays or sample buffers.
 namespace GameAudio {
 enum Effect { Click, Start, Shot, Hit, Pop, Feed, Happy, Sleep, Crash,
-              Sword, Bow, Hurt, Warning, Spit, Win, Lose, Test };
+              Sword, Bow, Hurt, Warning, Spit, Win, Lose, Test, Siren };
 struct Phrase { uint16_t notes[4]; uint16_t noteMs; uint8_t count, priority; };
 const Phrase phrases[] = {
   {{900,0,0,0},45,1,1}, {{392,523,784,0},100,3,2},
@@ -27,13 +27,16 @@ const Phrase phrases[] = {
   {{1100,650,400,0},45,3,1}, {{240,0,190,0},85,3,3},
   {{740,0,740,0},110,4,4}, {{380,550,250,0},60,3,1},
   {{523,659,784,1047},160,4,5}, {{392,311,247,165},180,4,5},
-  {{440,660,880,0},500,3,6}
+  {{440,660,880,0},500,3,6}, {{960,700,960,700},170,4,2}
 };
 bool enabled=true, ready=false, playing=false;
 bool toneActive=false;
 uint8_t volume=4; // 0=mute; 1..4 are the DAC amplitude steps.
 uint8_t outputVolume=255;
-int volumePercent() { const int levels[]={0,12,25,50,100}; return levels[volume]; }
+// User-facing volume in 10% steps; the DAC only has four amplitudes
+// (12, 25, 50, 100%), so each percentage picks the nearest one.
+uint8_t percent=100;
+int volumePercent() { return percent; }
 Effect current=Click;
 uint32_t started=0;
 uint16_t engineHz=0, outputHz=0;
@@ -155,6 +158,10 @@ void setVolume(int value) {
   if (!volume) stop();
   else output(outputHz);
   enableAmplifier(enabled && ready && volume>0);
+}
+void setVolumePercent(int value) {
+  percent=value<0 ? 0 : value>100 ? 100 : value;
+  setVolume(!percent ? 0 : percent<20 ? 1 : percent<40 ? 2 : percent<75 ? 3 : 4);
 }
 void update(uint32_t now) {
   if (!enabled || !ready || !volume) { output(0); return; }
