@@ -61,7 +61,7 @@ The parts we ordered on Amazon:
 
 ### How it's wired
 
-You can do the wiring with plug-in jumper wires, without any soldering to the display board itself.
+You can do the wiring with plug-in jumper wires, without any soldering to the display board itself. We did however solder the buttons and crimped our own dupont connectors to make the connection to the IO expander. 
 
 - **Buttons → PCF8574:** each button has two legs. One goes to a pin on the PCF8574 (P0, P1, P2 or P3) and the other goes to GND (ground).
 - **PCF8574 → display board:** four wires: VCC to 3.3V, GND to GND, SDA to GPIO 19 and SCL to GPIO 23.
