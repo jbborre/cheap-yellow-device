@@ -60,7 +60,7 @@ struct TouchButton {
 
 #include "include/UiNavigation.h"
 
-enum GameState { HOME_MENU, GAME_LIST, SAUCER_PLAYING, SAUCER_RESULTS, YODA_PLAYING, CITY_DRIVING, ZOMBIE_CRASH, SETTINGS };
+enum GameState { HOME_MENU, GAME_LIST, SAUCER_PLAYING, SAUCER_RESULTS, YODA_PLAYING, CITY_DRIVING, ZOMBIE_CRASH, BLACK_KNIGHT, SETTINGS };
 GameState gameState = HOME_MENU;
 bool touchWasDown = false;
 const TouchButton settingsButton={5,5,36,30};
@@ -407,6 +407,7 @@ void touchCalibrate() {
 #include "include/CityDrive.h"
 #include "include/ZombieCrash.h"
 #include "include/BabyYoda.h"
+#include "include/BlackKnight.h"
 
 void saveSoundSettings() {
   Preferences prefs;
@@ -455,6 +456,14 @@ void navigateUi(uint8_t pressed, bool &touching, bool &tapped, uint16_t &x, uint
   const TouchButton *items[8] = {};
   const TouchButton *back = nullptr;
   int count = 0, context = (int)gameState * 16;
+  // On the home screen P2 selects on release, and is cancelled if other buttons
+  // join in, so the four-button secret code doesn't also open a menu.
+  static bool homeSelectArmed = false;
+  if (gameState == HOME_MENU) {
+    if (pressed & 4) { homeSelectArmed = true; pressed &= ~4; }
+    if (homeSelectArmed && (ExpanderButtons::held & 0x0B)) homeSelectArmed = false;
+    if (homeSelectArmed && !(ExpanderButtons::held & 4)) { homeSelectArmed = false; pressed |= 4; }
+  } else homeSelectArmed = false;
   switch (gameState) {
     case HOME_MENU:
       items[count++]=&chooseGameButton; items[count++]=&settingsButton; break;
@@ -475,8 +484,23 @@ void navigateUi(uint8_t pressed, bool &touching, bool &tapped, uint16_t &x, uint
       if (pressed & 8) { drawGameList(); pressed=0; }
       break;
     case CITY_DRIVING:
-      if (CityDrive::finished) {
+      if (CityDrive::choosing) {
+        context+=2;
+        for (int i=0;i<CityDrive::vehicleCount;++i)
+          if (CityDrive::unlocked(i)) items[count++]=&CityDrive::vehicleCards[i];
+        back=&CityDrive::exitButton;
+      } else if (CityDrive::finished) {
         context++; items[count++]=&CityDrive::retryButton; back=&CityDrive::exitButton;
+      }
+      break;
+    case BLACK_KNIGHT:
+      context+=(int)BlackKnight::stage;
+      if (BlackKnight::stage==BlackKnight::SELECT) {
+        for (int i=0;i<3;++i) items[count++]=&BlackKnight::heroCards[i];
+        back=&BlackKnight::exitButton;
+      } else if (BlackKnight::stage!=BlackKnight::ACTIVE) {
+        items[count++]=&BlackKnight::retryButton; items[count++]=&BlackKnight::menuButton;
+        back=&BlackKnight::menuButton;
       }
       break;
     case ZOMBIE_CRASH:
@@ -502,6 +526,7 @@ void navigateUi(uint8_t pressed, bool &touching, bool &tapped, uint16_t &x, uint
     else if (gameState==YODA_PLAYING) BabyYoda::render(millis());
     else if (gameState==CITY_DRIVING) CityDrive::render(false,0,0);
     else if (gameState==ZOMBIE_CRASH) ZombieCrash::render(false,0,0,0);
+    else if (gameState==BLACK_KNIGHT) BlackKnight::render();
   }
   const TouchButton *activate=(pressed & 8) ? back : (pressed & 4) ? UiNavigation::target : nullptr;
   if (activate) {
@@ -551,6 +576,7 @@ void sleepFromBootButton() {
   BabyYoda::pause(pausedFor);
   CityDrive::lastFrame += pausedFor;
   ZombieCrash::lastFrame += pausedFor;
+  BlackKnight::lastFrame += pausedFor;
   // A finger left on the screen must not become a new tap on waking.
   touchWasDown = touch.touched();
   if (error != ESP_OK) Serial.printf("Sleep failed: %s\n", esp_err_to_name(error));
@@ -635,6 +661,12 @@ void loop() {
   if (gameState == HOME_MENU) {
     // Twinkling stars, saucer and gear animate at ~12 fps.
     if (now - lastMenuFrame >= 80) drawHomeMenu(now);
+    // Secret: hold all four buttons for 3 seconds to unlock Black Knight.
+    static uint32_t secretHeldSince = 0;
+    if ((ExpanderButtons::held & 0x0F) == 0x0F) {
+      if (!secretHeldSince) secretHeldSince = now;
+      else if (now - secretHeldSince >= 3000) { secretHeldSince = 0; beginBlackKnight(); }
+    } else secretHeldSince = 0;
     if (tapped && settingsButton.contains(x,y)) beginSettings();
     else if (tapped && chooseGameButton.contains(x, y)) drawGameList();
   } else if (gameState == SETTINGS) {
@@ -652,6 +684,8 @@ void loop() {
     updateSpaceSaucer(now, tapped, x, y);
   } else if (gameState == CITY_DRIVING) {
     updateCityDrive(now, touching, tapped, x, y, ExpanderButtons::held);
+  } else if (gameState == BLACK_KNIGHT) {
+    updateBlackKnight(now, tapped, x, y, ExpanderButtons::held, ExpanderButtons::pressed);
   } else if (gameState == ZOMBIE_CRASH) {
     updateZombieCrash(now, touching, tapped, x, y, ExpanderButtons::held, ExpanderButtons::pressed);
   } else {
@@ -659,7 +693,7 @@ void loop() {
   }
 
   BabyYoda::tick(millis());
-  GameAudio::engine(gameState==CITY_DRIVING && !CityDrive::finished ? CityDrive::speed : 0);
+  GameAudio::engine(gameState==CITY_DRIVING && !CityDrive::finished && !CityDrive::choosing ? CityDrive::speed : 0);
   GameAudio::update(millis());
   DamageLed::update(millis());
   touchWasDown = actualTouching;

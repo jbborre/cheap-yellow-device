@@ -25,9 +25,11 @@ float summonTimer = 5, summonFlash = 0, walkPhase = 0;
 constexpr int swordDamage = 2, bowDamage = 1;
 constexpr int maxSpit = 8, maxSpikes = 3;
 constexpr float spikeWarning = 1.2f, spikeDuration = 0.7f;
+constexpr float chieftainSummon = 3.0f;  // Level 1 boss raises zombies this often.
 int level = 1;
 float animationTime = 0, bossAttack = 0, spikeTimer = 2;
 int facing = 1, life = maxLife, bossLife = 10, kills = 0;
+int bossMaxLife() { return level==3 ? 30 : 10; }
 uint32_t lastFrame = 0;
 enum ExtraWeapon { NONE, GRENADES, SPEAR, DOG };
 ExtraWeapon extra = NONE;
@@ -177,7 +179,7 @@ void startLevel(uint32_t now, int selectedLevel = 1) {
   GameAudio::play(GameAudio::Start);
   level=selectedLevel;
   stage=ACTIVE_LEVEL; playerX=60; camera=0; facing=1;
-  life=maxLife; kills=0; bossLife=level==3 ? 15 : 10; bossX=2500; bossActive=false;
+  life=maxLife; kills=0; bossLife=bossMaxLife(); bossX=2500; bossActive=false;
   attackCooldown=swing=immunity=summonFlash=walkPhase=0;
   spawnTimer=1.6f; summonTimer=5; pendingAttack=false;
   animationTime=bossAttack=0; spikeTimer=2; spikeWave=0;
@@ -313,7 +315,7 @@ void step(float dt, int movement, bool attacking) {
     playerX=2040; stage=ARMORY; pendingAttack=false; return;
   }
   if (!bossActive && playerX>=arenaStart+40) {
-    bossActive=true; summonTimer=5; summonFlash=level==1 ? 1.0f : 0; spikeTimer=1.5f; bossAttack=0;
+    bossActive=true; summonTimer=level==1 ? chieftainSummon : 5; summonFlash=level==1 ? 1.0f : 0; spikeTimer=level==3 ? 3.0f : 1.5f; bossAttack=0;
     // The arena starts with the Chieftain; his first reinforcements rise in 5s.
     for (auto &z : zombies) z.hp=0;
     for (auto &a : arrows) a.active=false;
@@ -327,12 +329,15 @@ void step(float dt, int movement, bool attacking) {
       summonTimer-=dt;
       if (summonTimer<=0) {
         GameAudio::play(GameAudio::Warning);
-        summonTimer+=5; summonFlash=1.0f;
+        summonTimer+=chieftainSummon; summonFlash=1.0f;
         spawnZombie(playerX-90); spawnZombie(playerX+100);
       }
     } else if (level==3) {
       summonTimer-=dt;
       if (summonTimer<=0) { summonTimer=5; spawnZombie(playerX+100); spawnZombie(playerX-100); }
+      // The King also erupts spikes, offset from his summons.
+      spikeTimer-=dt;
+      if (spikeTimer<=0) { spikeTimer+=4.2f; raiseSpikeWarnings(); }
     } else {
       spikeTimer-=dt;
       if (spikeTimer<=0) { spikeTimer+=3.6f; raiseSpikeWarnings(); }
@@ -895,10 +900,10 @@ void render(bool touching, uint16_t tx, uint16_t ty, int movement) {
       gameFrame.drawString(level==3 ? "KING" : level==2 ? "WARLORD" : "CHIEFTAIN",5,38,1);
       gameFrame.fillRect(66,37,102,10,TFT_BLACK);
       gameFrame.drawRect(66,37,102,10,TFT_WHITE);
-      int bossFill=bossLife*100/(level==3 ? 15 : 10);
+      int bossFill=bossLife*100/bossMaxLife();
       GameGfx::gradient(67,38,bossFill,8,rgb(255,109,85),rgb(146,0,0));
       gameFrame.setTextColor(TFT_WHITE);
-      snprintf(label,sizeof(label),"%d/%d %s:%ds",bossLife,level==3 ? 15 : 10,level==2 ? "SPIKE" : "RAISE",(int)ceilf(level==2 ? spikeTimer : summonTimer));
+      snprintf(label,sizeof(label),"%d/%d %s:%ds",bossLife,bossMaxLife(),level==2 ? "SPIKE" : "RAISE",(int)ceilf(level==2 ? spikeTimer : summonTimer));
       gameFrame.drawRightString(label,315,38,1);
       if(summonFlash>0) {
         gameFrame.setTextColor(rgb(36,0,0));
