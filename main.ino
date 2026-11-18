@@ -1,4 +1,4 @@
-// Auggie's Games - menus, settings and input for the ESP32 Cheap Yellow Display.
+// Evie's Arcade - menus, settings and input for the ESP32 Cheap Yellow Display.
 // Each game lives in its own header under include/.
 #include <Arduino.h>
 #include <esp_sleep.h>
@@ -56,11 +56,11 @@ struct TouchButton {
   bool contains(uint16_t tx, uint16_t ty) const {
     return tx >= x && tx < x + w && ty >= y && ty < y + h;
   }
-} chooseGameButton, saucerMenuButton, yodaMenuButton, driveMenuButton, zombieMenuButton, backButton;
+} chooseGameButton, squishyMenuButton, memoryMenuButton, saucerMenuButton, yodaMenuButton, driveMenuButton, zombieMenuButton, backButton;
 
 #include "include/UiNavigation.h"
 
-enum GameState { HOME_MENU, GAME_LIST, SAUCER_PLAYING, SAUCER_RESULTS, YODA_PLAYING, CITY_DRIVING, ZOMBIE_CRASH, BLACK_KNIGHT, SETTINGS };
+enum GameState { HOME_MENU, GAME_LIST, SQUISHY_MAKER, SAUCER_PLAYING, SAUCER_RESULTS, YODA_PLAYING, CITY_DRIVING, ZOMBIE_CRASH, BLACK_KNIGHT, SETTINGS, MEMORY_MATCH };
 GameState gameState = HOME_MENU;
 bool touchWasDown = false;
 const TouchButton settingsButton={5,5,36,30};
@@ -101,14 +101,14 @@ void drawBackButton(const TouchButton &button, uint8_t font = 2) {
 void drawBatteryBadge() {
   using GameGfx::rgb;
   const bool low=BatteryStatus::percentage>=0 && BatteryStatus::percentage<=20;
-  gameFrame.fillRoundRect(244,7,70,20,10,rgb(0,0,85));
-  gameFrame.drawRoundRect(244,7,70,20,10,low ? COLOR_PINK : rgb(73,109,170));
+  gameFrame.fillRoundRect(244,7,70,20,10,TFT_WHITE);
+  gameFrame.drawRoundRect(244,7,70,20,10,low ? rgb(255,0,85) : rgb(219,73,182));
   // Battery icon with a fill proportional to the charge.
-  gameFrame.drawRect(251,12,16,10,TFT_WHITE);
-  gameFrame.fillRect(267,15,2,4,TFT_WHITE);
+  gameFrame.drawRect(251,12,16,10,rgb(182,36,146));
+  gameFrame.fillRect(267,15,2,4,rgb(182,36,146));
   if (BatteryStatus::percentage>0)
-    gameFrame.fillRect(253,14,max(1,12*BatteryStatus::percentage/100),6,low ? COLOR_PINK : COLOR_MINT);
-  gameFrame.setTextColor(low ? COLOR_PINK : TFT_WHITE);
+    gameFrame.fillRect(253,14,max(1,12*BatteryStatus::percentage/100),6,low ? rgb(255,0,85) : rgb(73,219,146));
+  gameFrame.setTextColor(rgb(182,36,146));
   char label[8];
   if (BatteryStatus::percentage<0) snprintf(label,sizeof(label),"--%%");
   else snprintf(label,sizeof(label),"%d%%",BatteryStatus::percentage);
@@ -127,8 +127,8 @@ void bands(int x, int y, int w, int h, uint16_t top, uint16_t bottom, int steps)
 }
 
 void drawTitle(const char *text, int16_t y, uint16_t color, uint16_t outline) {
-  // A thick outline plus a drop shadow keeps the title readable over the sky.
-  drawFreeCentered(text, y + 4, TFT_BLACK);
+  // A thick outline plus a soft drop shadow keeps the title readable over the sky.
+  drawFreeCentered(text, y + 4, GameGfx::rgb(182,73,182));
   for (int dx=-2; dx<=2; dx+=2)
     for (int dy=-2; dy<=2; dy+=2)
       if (dx || dy) {
@@ -142,67 +142,83 @@ void drawTitle(const char *text, int16_t y, uint16_t color, uint16_t outline) {
 void drawLabelPill(const char *text, int16_t y, uint16_t color, uint16_t border) {
   const int w=gameFrame.textWidth(text,2)+28;
   const int x=(gameFrame.width()-w)/2;
-  gameFrame.fillRoundRect(x,y,w,22,11,GameGfx::rgb(0,0,36));
+  gameFrame.fillRoundRect(x,y,w,22,11,TFT_WHITE);
   gameFrame.drawRoundRect(x,y,w,22,11,border);
   gameFrame.setTextColor(color);
   gameFrame.drawCentreString(text,160,y+3,2);
   gameFrame.drawCentreString(text,161,y+3,2); // Double strike for bolder text.
 }
 
-void drawSpaceBackdrop(uint32_t now) {
+void drawHeartShape(int x, int y, int r, uint16_t c) {
+  gameFrame.fillCircle(x-r,y,r,c);
+  gameFrame.fillCircle(x+r,y,r,c);
+  gameFrame.fillTriangle(x-2*r,y+1,x+2*r,y+1,x,y+2*r+2,c);
+}
+
+void drawCloud(int x, int y, int s) {
   using GameGfx::rgb;
-  bands(0,0,320,240,rgb(0,0,36),rgb(73,36,170),12);
-  // Twinkling stars: each pulses on its own phase.
-  for (int i=0;i<34;++i) {
+  gameFrame.fillEllipse(x,y+s/3,s*2,s/2+2,rgb(255,219,255));
+  gameFrame.fillCircle(x-s,y+s/4,s*2/3,TFT_WHITE);
+  gameFrame.fillCircle(x,y,s,TFT_WHITE);
+  gameFrame.fillCircle(x+s,y+s/5,s*3/4,TFT_WHITE);
+}
+
+// Pastel sky with drifting clouds, floating hearts and twinkling sparkles.
+void drawPastelBackdrop(uint32_t now) {
+  using GameGfx::rgb;
+  bands(0,0,320,240,rgb(255,182,219),rgb(219,182,255),12);
+  for (int i=0;i<3;++i) {
+    const int x=((i*130+(int)(now/90))%440+440)%440-60;
+    drawCloud(x,48+i*38,10+i*2);
+  }
+  for (int i=0;i<8;++i) {
+    const int x=(i*67+23)%320;
+    const int y=200-(int)((now/40+i*37)%200);
+    drawHeartShape(x,y,2+i%2,i%3 ? rgb(255,146,219) : rgb(255,255,255));
+  }
+  for (int i=0;i<18;++i) {
     const int x=(i*97+31)%320, y=(i*53+11)%170;
     const int phase=(now/120+i*7)%24;
-    const uint16_t c=i%5==0 ? COLOR_MINT : i%7==0 ? COLOR_GOLD : TFT_WHITE;
-    if (phase<2) {
+    const uint16_t c=i%3==0 ? rgb(255,219,85) : TFT_WHITE;
+    if (phase<3) {
       gameFrame.drawFastHLine(x-3,y,7,c);
       gameFrame.drawFastVLine(x,y-3,7,c);
-    } else if (phase<20) gameFrame.drawPixel(x,y,c);
+    } else if (phase<18) gameFrame.drawPixel(x,y,c);
   }
 }
 
-void drawMoonSurface() {
+// Rolling candy hills along the bottom.
+void drawCandyHills() {
   using GameGfx::rgb;
-  gameFrame.fillEllipse(160,268,250,96,rgb(109,109,170));
-  gameFrame.fillEllipse(160,272,250,96,rgb(73,73,85));
-  const int craters[][3]={{40,214,10},{112,196,7},{230,200,9},{296,222,8},{176,226,6}};
-  for (const auto &c:craters) {
-    gameFrame.fillEllipse(c[0],c[1],c[2],c[2]/3+1,rgb(36,36,85));
-    gameFrame.drawFastHLine(c[0]-c[2]+2,c[1]+c[2]/3+1,c[2]*2-4,rgb(109,109,170));
+  gameFrame.fillEllipse(70,262,150,70,rgb(255,146,219));
+  gameFrame.fillEllipse(260,268,150,72,rgb(219,146,255));
+  gameFrame.fillEllipse(160,280,220,62,rgb(255,182,219));
+  for (int i=0;i<6;++i) {
+    const int x=20+i*56, y=226+(i%2)*6;
+    gameFrame.fillCircle(x,y,4,TFT_WHITE);
+    gameFrame.fillCircle(x,y,2,i%2 ? rgb(255,73,146) : rgb(255,219,85));
   }
 }
 
 void drawHomeScene(uint32_t now) {
   using GameGfx::rgb;
-  drawSpaceBackdrop(now);
-  // Ringed planet: back of the ring, planet with a solid lit crescent, front of the ring.
-  gameFrame.drawEllipse(52,150,46,10,rgb(255,182,85));
-  gameFrame.drawEllipse(52,150,48,11,rgb(255,219,85));
-  gameFrame.fillCircle(52,150,26,rgb(182,36,85));
-  gameFrame.fillCircle(47,145,22,rgb(219,73,85));
-  gameFrame.fillCircle(43,140,9,rgb(255,146,85));
-  gameFrame.fillRect(30,148,40,3,rgb(146,36,85));
-  for (int dx=-48;dx<=48;++dx) {
-    gameFrame.drawPixel(52+dx,150+(int)(11*sqrtf(1.0f-(float)(dx*dx)/(48*48))),rgb(255,219,85));
-    if (abs(dx)<=46) gameFrame.drawPixel(52+dx,150+(int)(10*sqrtf(1.0f-(float)(dx*dx)/(46*46))),rgb(255,182,85));
+  drawPastelBackdrop(now);
+  // Rainbow arc behind the title.
+  const uint16_t rainbow[6]={rgb(255,109,109),rgb(255,182,85),rgb(255,255,109),
+                             rgb(146,255,146),rgb(109,182,255),rgb(219,146,255)};
+  for (int i=0;i<6;++i) {
+    gameFrame.fillCircle(160,150,128-i*7,rainbow[i]);
   }
-  // Hovering saucer with a scrolling striped tractor beam.
-  const int sx=262, sy=60+(int)(4*sinf(now/350.0f));
-  for (int y=sy+8;y<180;++y) {
-    if ((y+now/60)%4>1) continue;
-    const int half=6+(y-sy)/4;
-    gameFrame.drawFastHLine(sx-half,y,half*2,rgb(146,255,170));
-  }
-  gameFrame.fillEllipse(sx,sy-6,11,9,rgb(146,219,255));
-  gameFrame.fillCircle(sx-4,sy-9,3,TFT_WHITE);
-  gameFrame.fillEllipse(sx,sy+2,30,8,rgb(182,182,170));
-  gameFrame.fillEllipse(sx,sy+5,24,4,rgb(109,109,85));
-  for (int i=0;i<5;++i)
-    gameFrame.fillCircle(sx-18+i*9,sy+2,2,(i+now/180)%5==0 ? COLOR_GOLD : rgb(255,73,85));
-  drawMoonSurface();
+  gameFrame.fillCircle(160,150,85,rgb(255,219,255));
+  bands(0,150,320,90,rgb(255,219,255),rgb(219,182,255),6);
+  drawCloud(36,142,14);
+  drawCloud(286,138,14);
+  // A heart balloon bobbing beside the title.
+  const int by=70+(int)(5*sinf(now/400.0f));
+  gameFrame.drawLine(276,by+14,270,by+46,rgb(182,73,182));
+  drawHeartShape(276,by,8,rgb(255,73,146));
+  gameFrame.fillCircle(270,by-3,2,TFT_WHITE);
+  drawCandyHills();
 }
 
 void drawHomeMenu(uint32_t now) {
@@ -212,28 +228,30 @@ void drawHomeMenu(uint32_t now) {
   drawHomeScene(now);
 
   gameFrame.setFreeFont(FSSBO18);
-  drawTitle("AUGGIE'S", 54, COLOR_PINK, rgb(73,0,85));
+  drawTitle("EVIE'S", 54, TFT_WHITE, rgb(255,73,182));
   gameFrame.setFreeFont(FSSBO24);
-  drawTitle("GAMES", 98, COLOR_GOLD, rgb(146,36,0));
+  drawTitle("ARCADE", 98, rgb(255,255,109), rgb(182,73,255));
   gameFrame.setFreeFont(NULL);
 
-  drawLabelPill("READY TO PLAY?",148,(now/600)%2 ? TFT_WHITE : COLOR_MINT,COLOR_MINT);
+  drawLabelPill("READY TO PLAY?",150,(now/600)%2 ? rgb(219,36,146) : rgb(146,73,219),rgb(255,73,182));
 
   const TouchButton &b=chooseGameButton;
-  gameFrame.fillRoundRect(b.x+2,b.y+5,b.w,b.h,14,TFT_BLACK);
-  gameFrame.fillRoundRect(b.x,b.y,b.w,b.h,14,COLOR_PINK);
-  gameFrame.fillRoundRect(b.x+3,b.y+3,b.w-6,b.h-6,11,rgb(109,0,170));
-  gameFrame.fillRoundRect(b.x+3,b.y+3,b.w-6,(b.h-6)/2,11,rgb(146,36,255));
-  gameFrame.fillRect(b.x+3,b.y+3+(b.h-6)/2-8,b.w-6,8,rgb(146,36,255));
-  gameFrame.drawFastHLine(b.x+14,b.y+6,b.w-28,rgb(219,146,255));
-  gameFrame.setTextColor(TFT_BLACK);
+  gameFrame.fillRoundRect(b.x+2,b.y+5,b.w,b.h,20,rgb(182,73,182));
+  gameFrame.fillRoundRect(b.x,b.y,b.w,b.h,20,TFT_WHITE);
+  gameFrame.fillRoundRect(b.x+3,b.y+3,b.w-6,b.h-6,17,rgb(255,73,182));
+  gameFrame.fillRoundRect(b.x+3,b.y+3,b.w-6,(b.h-6)/2,17,rgb(255,146,219));
+  gameFrame.fillRect(b.x+3,b.y+3+(b.h-6)/2-10,b.w-6,10,rgb(255,146,219));
+  gameFrame.drawFastHLine(b.x+20,b.y+6,b.w-40,TFT_WHITE);
+  drawHeartShape(b.x+18,b.y+b.h/2-2,4,TFT_WHITE);
+  drawHeartShape(b.x+b.w-18,b.y+b.h/2-2,4,TFT_WHITE);
+  gameFrame.setTextColor(rgb(182,36,146));
   gameFrame.drawCentreString("CHOOSE GAME",b.x+b.w/2+1,b.y+14,4);
   gameFrame.setTextColor(TFT_WHITE);
   gameFrame.drawCentreString("CHOOSE GAME",b.x+b.w/2,b.y+12,4);
 
   const TouchButton &g=settingsButton;
-  gameFrame.fillRoundRect(g.x,g.y,g.w,g.h,9,rgb(0,0,85));
-  gameFrame.drawRoundRect(g.x,g.y,g.w,g.h,9,rgb(73,109,170));
+  gameFrame.fillRoundRect(g.x,g.y,g.w,g.h,9,rgb(255,73,182));
+  gameFrame.drawRoundRect(g.x,g.y,g.w,g.h,9,TFT_WHITE);
   const float spin=now/1500.0f;
   for (int i=0;i<8;++i) {
     float angle=i*PI/4+spin;
@@ -241,7 +259,7 @@ void drawHomeMenu(uint32_t now) {
                            23+cosf(angle)*12,20+sinf(angle)*12,4,TFT_WHITE);
   }
   gameFrame.fillCircle(23,20,9,TFT_WHITE);
-  gameFrame.fillCircle(23,20,4,rgb(0,0,85));
+  gameFrame.fillCircle(23,20,4,rgb(255,73,182));
   drawBatteryBadge();
   UiNavigation::draw();
   gameFrame.pushSprite(0,0);
@@ -255,7 +273,21 @@ void drawHomeMenu() {
 // Small hand-drawn icon for each game card, centered on (x, y).
 void drawGameIcon(int game, int x, int y, uint32_t now) {
   using GameGfx::rgb;
-  if (game==0) {
+  if (game==4) {
+    // Little pink squishy with a happy face.
+    gameFrame.fillEllipse(x,y+2,13,9,rgb(255,182,219));
+    gameFrame.fillCircle(x-4,y+1,2,rgb(36,0,36));
+    gameFrame.fillCircle(x+4,y+1,2,rgb(36,0,36));
+    gameFrame.fillEllipse(x,y+6,2,1,rgb(182,0,73));
+    gameFrame.fillCircle(x+8,y-6,1,TFT_WHITE);
+  } else if (game==5) {
+    // A face-down card with a heart overlapping a face-up one.
+    gameFrame.fillRoundRect(x-3,y-11,14,20,3,TFT_WHITE);
+    gameFrame.fillCircle(x+4,y-1,4,rgb(255,182,85));
+    gameFrame.fillRoundRect(x-12,y-8,14,20,3,rgb(255,73,146));
+    gameFrame.drawRoundRect(x-12,y-8,14,20,3,TFT_WHITE);
+    drawHeartShape(x-5,y,2,TFT_WHITE);
+  } else if (game==0) {
     gameFrame.fillEllipse(x,y-3,6,5,rgb(146,219,255));
     gameFrame.fillEllipse(x,y+2,13,4,rgb(182,182,170));
     for (int i=0;i<3;++i) gameFrame.drawPixel(x-6+i*6,y+2,(i+now/200)%3 ? rgb(255,73,85) : COLOR_GOLD);
@@ -286,15 +318,15 @@ void drawGameIcon(int game, int x, int y, uint32_t now) {
 
 void drawGameCard(const TouchButton &b, int game, const char *label, uint16_t accent, uint32_t now) {
   using GameGfx::rgb;
-  gameFrame.fillRoundRect(b.x+2,b.y+3,b.w,b.h,10,TFT_BLACK);
-  gameFrame.fillRoundRect(b.x,b.y,b.w,b.h,10,accent);
-  gameFrame.fillRoundRect(b.x+2,b.y+2,b.w-4,b.h-4,8,rgb(0,0,85));
+  gameFrame.fillRoundRect(b.x+2,b.y+3,b.w,b.h,12,rgb(182,73,182));
+  gameFrame.fillRoundRect(b.x,b.y,b.w,b.h,12,accent);
+  gameFrame.fillRoundRect(b.x+2,b.y+2,b.w-4,b.h-4,10,rgb(255,255,255));
   // Icon tile on the left in the game's accent color.
   gameFrame.fillRoundRect(b.x+4,b.y+4,b.h-8+10,b.h-8,6,GameGfx::darker(accent));
   drawGameIcon(game,b.x+4+(b.h+2)/2,b.y+b.h/2,now);
   // Fall back to the small font if a long name would reach the chevron.
   const int textX=b.x+b.h+18, font=gameFrame.textWidth(label,4)<=b.x+b.w-24-textX ? 4 : 2;
-  gameFrame.setTextColor(TFT_WHITE);
+  gameFrame.setTextColor(rgb(146,36,146));
   gameFrame.drawString(label,textX,b.y+(b.h-(font==4 ? 18 : 14))/2,font);
   // Chevron that nudges right in time with the stars.
   const int cx=b.x+b.w-16+((now/300)%2);
@@ -306,13 +338,14 @@ void drawGameList(uint32_t now) {
   gameState = GAME_LIST;
   lastMenuFrame = now;
   backButton = {8, 6, 60, 25};
-  drawSpaceBackdrop(now);
-  drawMoonSurface();
+  drawPastelBackdrop(now);
+  drawCandyHills();
   drawBackButton(backButton);
   gameFrame.setFreeFont(FSSBO12);
-  drawTitle("PICK A GAME", 26, COLOR_GOLD, rgb(146,36,0));
+  drawTitle("PICK A GAME", 26, TFT_WHITE, rgb(255,73,182));
   gameFrame.setFreeFont(NULL);
-  drawLabelPill("WHAT DO YOU WANT TO PLAY?",50,TFT_WHITE,COLOR_PINK);
+  drawGameCard(squishyMenuButton,4,"SQUISHY MAKER",rgb(255,73,182),now);
+  drawGameCard(memoryMenuButton,5,"MEMORY MATCH",rgb(255,109,146),now);
   drawGameCard(saucerMenuButton,0,"SPACE SAUCER",COLOR_PURPLE,now);
   drawGameCard(yodaMenuButton,1,"BABY YODA",rgb(73,182,85),now);
   drawGameCard(driveMenuButton,2,"CITY DRIVE",rgb(255,146,0),now);
@@ -408,6 +441,8 @@ void touchCalibrate() {
 #include "include/ZombieCrash.h"
 #include "include/BabyYoda.h"
 #include "include/BlackKnight.h"
+#include "include/SquishyMaker.h"
+#include "include/MemoryMatch.h"
 
 void saveSoundSettings() {
   Preferences prefs;
@@ -453,7 +488,7 @@ void updateSettings(bool tapped,uint16_t x,uint16_t y) {
 
 // Translate physical menu presses into the same actions as touch selection.
 void navigateUi(uint8_t pressed, bool &touching, bool &tapped, uint16_t &x, uint16_t &y) {
-  const TouchButton *items[8] = {};
+  const TouchButton *items[16] = {};
   const TouchButton *back = nullptr;
   int count = 0, context = (int)gameState * 16;
   // On the home screen P2 selects on release, and is cancelled if other buttons
@@ -471,7 +506,7 @@ void navigateUi(uint8_t pressed, bool &touching, bool &tapped, uint16_t &x, uint
       items[count++]=&soundToggleButton; items[count++]=&volumeDownButton;
       items[count++]=&volumeUpButton; back=&settingsBackButton; break;
     case GAME_LIST:
-      items[count++]=&saucerMenuButton; items[count++]=&yodaMenuButton;
+      items[count++]=&squishyMenuButton; items[count++]=&memoryMenuButton; items[count++]=&saucerMenuButton; items[count++]=&yodaMenuButton;
       items[count++]=&driveMenuButton; items[count++]=&zombieMenuButton;
       back=&backButton; break;
     case SAUCER_RESULTS:
@@ -493,6 +528,12 @@ void navigateUi(uint8_t pressed, bool &touching, bool &tapped, uint16_t &x, uint
         context++; items[count++]=&CityDrive::retryButton; back=&CityDrive::exitButton;
       }
       break;
+    case SQUISHY_MAKER:
+      context+=(int)Squishy::stage*4+Squishy::step;
+      count=Squishy::navItems(items); back=&Squishy::exitButton; break;
+    case MEMORY_MATCH:
+      context+=Memory::navContext();
+      count=Memory::navItems(items); back=&Memory::exitButton; break;
     case BLACK_KNIGHT:
       context+=(int)BlackKnight::stage;
       if (BlackKnight::stage==BlackKnight::SELECT) {
@@ -527,6 +568,8 @@ void navigateUi(uint8_t pressed, bool &touching, bool &tapped, uint16_t &x, uint
     else if (gameState==CITY_DRIVING) CityDrive::render(false,0,0);
     else if (gameState==ZOMBIE_CRASH) ZombieCrash::render(false,0,0,0);
     else if (gameState==BLACK_KNIGHT) BlackKnight::render();
+    else if (gameState==SQUISHY_MAKER) Squishy::render();
+    else if (gameState==MEMORY_MATCH) Memory::render();
   }
   const TouchButton *activate=(pressed & 8) ? back : (pressed & 4) ? UiNavigation::target : nullptr;
   if (activate) {
@@ -577,6 +620,7 @@ void sleepFromBootButton() {
   CityDrive::lastFrame += pausedFor;
   ZombieCrash::lastFrame += pausedFor;
   BlackKnight::lastFrame += pausedFor;
+  Memory::pause(pausedFor);
   // A finger left on the screen must not become a new tap on waking.
   touchWasDown = touch.touched();
   if (error != ESP_OK) Serial.printf("Sleep failed: %s\n", esp_err_to_name(error));
@@ -617,10 +661,12 @@ void setup() {
   ExpanderButtons::begin();
   randomSeed(micros());
   chooseGameButton = {(int16_t)((GameDisplay::width - 190) / 2), 181, 190, 48};
-  saucerMenuButton = {20, 81, 280, 33};
-  yodaMenuButton = {20, 120, 280, 33};
-  driveMenuButton = {20, 159, 280, 33};
-  zombieMenuButton = {20, 198, 280, 33};
+  squishyMenuButton = {20, 50, 280, 28};
+  memoryMenuButton = {20, 81, 280, 28};
+  saucerMenuButton = {20, 112, 280, 28};
+  yodaMenuButton = {20, 143, 280, 28};
+  driveMenuButton = {20, 174, 280, 28};
+  zombieMenuButton = {20, 205, 280, 28};
   backButton = {8, 6, 60, 25};
   Serial.println("Checking touch calibration");
   touchCalibrate();
@@ -637,6 +683,7 @@ void setup() {
   }
   BatteryStatus::begin();
   BabyYoda::load();
+  Memory::loadBest();
   drawHomeMenu();
   Serial.println("Home menu ready");
 }
@@ -674,6 +721,8 @@ void loop() {
   } else if (gameState == GAME_LIST) {
     if (now - lastMenuFrame >= 80) drawGameList(now);
     if (tapped && backButton.contains(x, y)) drawHomeMenu();
+    else if (tapped && squishyMenuButton.contains(x, y)) beginSquishyMaker();
+    else if (tapped && memoryMenuButton.contains(x, y)) beginMemoryMatch();
     else if (tapped && saucerMenuButton.contains(x, y)) beginSpaceSaucer();
     else if (tapped && yodaMenuButton.contains(x, y)) beginYodaGame();
     else if (tapped && driveMenuButton.contains(x, y)) beginCityDrive();
@@ -684,6 +733,10 @@ void loop() {
     updateSpaceSaucer(now, tapped, x, y);
   } else if (gameState == CITY_DRIVING) {
     updateCityDrive(now, touching, tapped, x, y, ExpanderButtons::held);
+  } else if (gameState == SQUISHY_MAKER) {
+    Squishy::update(now, tapped, x, y);
+  } else if (gameState == MEMORY_MATCH) {
+    Memory::update(now, tapped, x, y);
   } else if (gameState == BLACK_KNIGHT) {
     updateBlackKnight(now, tapped, x, y, ExpanderButtons::held, ExpanderButtons::pressed);
   } else if (gameState == ZOMBIE_CRASH) {
