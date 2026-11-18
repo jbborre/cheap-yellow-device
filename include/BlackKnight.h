@@ -5,8 +5,10 @@
 #include <math.h>
 
 // Secret side-scrolling brawler, unlocked by holding all four buttons on the
-// home screen. Pirates attack in waves that lock the screen until cleared,
-// then Davy Jones waits at the stern. Everyone fights on one walking plane.
+// home screen. Enemies attack in waves that lock the screen until cleared,
+// then a boss waits at the end. Everyone fights on one walking plane.
+// Level 1: pirates and Davy Jones on a shipwreck.
+// Level 2: crowbar thugs and Brock on a run-down city street.
 namespace BlackKnight {
 using GameGfx::rgb;
 enum Stage { SELECT, ACTIVE, VICTORY, DEFEAT };
@@ -31,11 +33,16 @@ constexpr int waveCount = 4;
 const float waveAt[waveCount] = {260, 620, 980, 1340};
 const int waveSize[waveCount] = {3, 4, 5, 6};
 constexpr int maxEnemies = 6, maxAlive = 3, maxSparks = 4;
-constexpr int bossMaxHp = 10;
 constexpr float superWindup = 1.5f, superRadius = 52;
+// Brock flashes red, then charges across the street until he hits a wall
+// or runs a little past where the player stood.
+constexpr float brockFlash = 1.2f, brockDashSpeed = 260, brockOvershoot = 60;
+constexpr int levelCount = 2;
 
 Stage stage = SELECT;
 int hero = KNIGHT;
+int level = 0;
+int bossMaxHp() { return level ? 12 : 10; }
 uint32_t lastFrame = 0;
 float camera = 0, shake = 0, banner = 0, goTimer = 0, endTimer = 0;
 int kos = 0;
@@ -51,7 +58,7 @@ struct Enemy {
 } enemies[maxEnemies];
 
 struct Boss {
-  float x, startX, lift; int hp, facing; float windup, rest, stun, flash, superTimer, charge, superX, slamFx, dying, walk;
+  float x, startX, lift; int hp, facing; float windup, rest, stun, flash, superTimer, charge, superX, slamFx, dying, walk, dash, daze;
   bool active;
 } boss;
 
@@ -260,6 +267,301 @@ void drawBoss(int x) {
   if (boss.flash > 0) hitFlash(x, floorY - lift, s);
 }
 
+// ---- City street level: thugs and Brock ------------------------------------
+// Steel crowbar with a hooked claw at the far end.
+void crowbar(int hx, int hy, int tx, int ty, float s) {
+  const float dx = tx - hx, dy = ty - hy, len = max(1.0f, sqrtf(dx * dx + dy * dy));
+  const float ux = dx / len, uy = dy / len;
+  limb(hx - (int)(ux * 4 * s), hy - (int)(uy * 4 * s), tx, ty, max(2.0f, 3 * s), rgb(146,146,170));
+  // The hook bends back toward the holder.
+  const int kx = tx - (int)(ux * 4 * s) - (int)(uy * 5 * s), ky = ty - (int)(uy * 4 * s) + (int)(ux * 5 * s);
+  limb(tx, ty, kx, ky, max(2.0f, 3 * s), rgb(146,146,170));
+  gameFrame.drawLine(hx, hy, tx, ty, rgb(219,219,255));
+}
+
+void drawThug(const Enemy &e, int x) {
+  const bool big = e.type == 1;
+  const float s = big ? 1.3f : 1.0f;
+  auto S = [s](float v) { return (int)lroundf(v * s); };
+  const Pose pose = e.dying > 0 || e.stun > 0 ? HURT : e.windup > 0 ? WINDUP : IDLE;
+  const int d = e.facing;
+  const uint16_t skin = rgb(219,146,109);
+  if (big) {
+    // Muscle shirt, cargo pants, buzz cut and bare fists.
+    const Look lk = {rgb(73,73,36), rgb(36,36,36), rgb(219,219,219), skin, skin, skin};
+    Joints j = humanoid(x, floorY, d, s, lk, e.walk, pose);
+    gameFrame.fillRect(x - S(7) + j.lean, j.hipY - S(1), S(14), max(2, S(2)), rgb(36,36,36));
+    gameFrame.fillRect(j.headX - S(7), j.headY - S(7), S(14), S(3), rgb(73,36,0));
+    gameFrame.fillRect(j.headX - S(4) + d * S(1), j.headY + S(3), S(9), S(3), rgb(146,73,36));  // Stubble.
+    gameFrame.fillRect(d > 0 ? j.headX + S(2) : j.headX - S(4), j.headY - S(2), max(2, S(2)), max(1, S(1)), TFT_BLACK);
+    gameFrame.drawLine(j.headX + d * S(1), j.headY - S(4), j.headX + d * S(6), j.headY - S(2), TFT_BLACK);  // Scowl.
+    // Tattoo on the front arm and oversized fists.
+    const int sx = x + d * S(2) + j.lean, sy = j.shY + S(3);
+    gameFrame.fillCircle((sx + j.handX) / 2, (sy + j.handY) / 2, max(1, S(2)), rgb(36,73,146));
+    gameFrame.fillCircle(j.handX, j.handY, S(4), skin);
+    gameFrame.fillCircle(j.backX, j.backY, S(4), GameGfx::darker(skin));
+  } else {
+    // Hoodie, jeans and a beanie, swinging a crowbar.
+    const uint16_t hoodie = rgb(73,109,73);
+    const Look lk = {rgb(36,73,146), rgb(36,36,36), hoodie, hoodie, skin, skin};
+    Joints j = humanoid(x, floorY, d, s, lk, e.walk, pose);
+    gameFrame.fillRect(j.headX - S(6), j.headY + S(5), S(12), S(3), GameGfx::darker(hoodie));  // Hood at the neck.
+    gameFrame.fillRect(x - S(4) + j.lean, j.shY + S(13), S(8), S(4), GameGfx::darker(hoodie));  // Front pocket.
+    gameFrame.fillRect(j.headX - S(7), j.headY - S(8), S(14), S(5), rgb(36,36,36));
+    gameFrame.drawFastHLine(j.headX - S(7), j.headY - S(4), S(14), rgb(109,109,109));
+    gameFrame.fillRect(d > 0 ? j.headX + S(2) : j.headX - S(4), j.headY - S(1), max(2, S(2)), max(1, S(2)), TFT_BLACK);
+    const int tipX = pose == WINDUP ? j.handX - d * S(6) : j.handX + d * S(15);
+    const int tipY = pose == WINDUP ? j.handY - S(17) : j.handY + S(9);
+    crowbar(j.handX, j.handY, tipX, tipY, s);
+  }
+  if (e.flash > 0) hitFlash(x, floorY, s);
+}
+
+void drawBrock(int x, uint32_t now) {
+  const float s = 1.55f;
+  auto S = [s](float v) { return (int)lroundf(v * s); };
+  const bool dashing = boss.dash > 0;
+  const Pose pose = boss.dying > 0 ? HURT : dashing ? PUNCH : boss.charge > 0 || boss.windup > 0 ? WINDUP : IDLE;
+  const int d = boss.facing;
+  const uint16_t skin = rgb(219,146,109), red = rgb(219,0,0);
+  if (dashing) {
+    // Speed lines and kicked-up dust behind the charge.
+    for (int i = 0; i < 4; ++i)
+      gameFrame.drawFastHLine(x - d * S(24 + i * 5) - (d > 0 ? S(16) : 0), floorY - S(14 + i * 11), S(16), rgb(219,219,219));
+    for (int i = 0; i < 3; ++i)
+      gameFrame.fillCircle(x - d * S(14 + i * 9), floorY - S(2 + i), S(4 - i), rgb(146,146,146));
+  }
+  const Look lk = {rgb(36,73,146), rgb(73,36,0), rgb(219,219,219), skin, skin, skin};
+  Joints j = humanoid(x, floorY, d, s, lk, boss.walk, pose);
+  // Black leather vest over a white tank, and a belt with a big gold buckle.
+  const int vh = j.hipY - j.shY + S(5);
+  gameFrame.fillRect(x - S(7) + j.lean, j.shY - S(1), S(5), vh, rgb(36,36,36));
+  gameFrame.fillRect(x + S(2) + j.lean, j.shY - S(1), S(5), vh, rgb(36,36,36));
+  gameFrame.fillRect(x - S(7) + j.lean, j.hipY - S(1), S(14), max(2, S(2)), rgb(73,36,0));
+  gameFrame.fillRect(x - S(2) + j.lean, j.hipY - S(2), S(4), S(3), rgb(219,182,0));
+  // Beard, a scowl and big fists.
+  gameFrame.fillRect(j.headX - S(5) + d * S(1), j.headY + S(2), S(10), S(5), rgb(73,36,0));
+  gameFrame.fillRect(d > 0 ? j.headX + S(2) : j.headX - S(4), j.headY - S(1), max(2, S(2)), max(1, S(1)), TFT_BLACK);
+  gameFrame.drawLine(j.headX + d * S(1), j.headY - S(3), j.headX + d * S(6), j.headY - S(1), TFT_BLACK);
+  gameFrame.fillCircle(j.handX, j.handY, S(4), skin);
+  gameFrame.fillCircle(j.backX, j.backY, S(4), GameGfx::darker(skin));
+  // Red bandana with white dots, its knot tails flapping behind his head.
+  gameFrame.fillRoundRect(j.headX - S(7), j.headY - S(8), S(14), S(6), S(3), red);
+  gameFrame.drawFastHLine(j.headX - S(7), j.headY - S(3), S(14), rgb(146,0,0));
+  for (int i = -1; i <= 1; ++i) gameFrame.fillRect(j.headX + i * S(4), j.headY - S(6), 2, 2, TFT_WHITE);
+  const int flap = (int)(sinf(now / (dashing ? 40.0f : 110.0f)) * S(2));
+  gameFrame.fillTriangle(j.headX - d * S(6), j.headY - S(5), j.headX - d * S(15), j.headY - S(8) + flap,
+                         j.headX - d * S(14), j.headY - S(3) + flap, red);
+  gameFrame.fillTriangle(j.headX - d * S(6), j.headY - S(4), j.headX - d * S(13), j.headY + S(1) - flap,
+                         j.headX - d * S(10), j.headY + S(3) - flap, red);
+  // Stars circling his head after he slams into a wall.
+  if (boss.daze > 0)
+    for (int i = 0; i < 3; ++i) {
+      const float a = now / 150.0f + i * 2.09f;
+      starDot(j.headX + (int)(cosf(a) * S(11)), j.headY - S(13) + (int)(sinf(a) * S(3)), rgb(255,255,0));
+    }
+  // The tell for his charge: he flashes red.
+  if (boss.charge > 0 && (now / 100) % 2) {
+    GameGfx::glow(x, floorY - S(30), S(40), rgb(255,0,0));
+    GameGfx::screenRect(x - S(14), floorY - S(60), S(28), S(60), rgb(255,0,0));
+  }
+  if (boss.flash > 0) hitFlash(x, floorY, s);
+}
+
+// ---- Run-down city backdrop ---------------------------------------------------
+uint32_t cityHash(int a, int b) {
+  uint32_t h = (uint32_t)a * 374761393u + (uint32_t)b * 668265263u;
+  h = (h ^ (h >> 13)) * 1274126177u;
+  return h ^ (h >> 16);
+}
+
+void cityWindow(int x, int y, int w, int h, uint32_t kind, uint32_t now) {
+  const uint16_t glass = rgb(73,109,146);
+  gameFrame.fillRect(x - 1, y - 1, w + 2, h + 2, rgb(36,36,36));
+  switch (kind % 8) {
+    case 0: case 1:  // Dark but whole.
+      gameFrame.fillRect(x, y, w, h, rgb(36,36,73));
+      gameFrame.drawLine(x + 2, y + h - 4, x + w - 4, y + 2, glass);
+      break;
+    case 2: case 3:  // Smashed out, with shards left in the frame.
+      gameFrame.fillRect(x, y, w, h, rgb(0,0,0));
+      gameFrame.fillTriangle(x, y, x + w * 2 / 3, y, x, y + h / 2, glass);
+      gameFrame.fillTriangle(x + w - 1, y + h - 1, x + w / 3, y + h - 1, x + w - 1, y + h / 3, glass);
+      gameFrame.drawLine(x + w * 2 / 3, y, x, y + h / 2, rgb(182,219,255));
+      break;
+    case 4:  // Boarded up.
+      gameFrame.fillRect(x, y, w, h, rgb(0,0,0));
+      limb(x, y + 3, x + w - 1, y + h - 4, 4, rgb(146,109,73));
+      limb(x, y + h - 4, x + w - 1, y + 3, 4, rgb(182,146,73));
+      gameFrame.drawPixel(x + 2, y + 4, rgb(36,36,36));
+      gameFrame.drawPixel(x + w - 3, y + 4, rgb(36,36,36));
+      break;
+    case 5: {  // Cracked like a spider web.
+      gameFrame.fillRect(x, y, w, h, rgb(36,36,73));
+      const int cx = x + w / 3, cy = y + h / 3;
+      gameFrame.drawLine(cx, cy, x, y + h - 1, rgb(182,182,219));
+      gameFrame.drawLine(cx, cy, x + w - 1, y + h / 2, rgb(182,182,219));
+      gameFrame.drawLine(cx, cy, x + w / 2, y, rgb(182,182,219));
+      gameFrame.drawLine(cx, cy, x, y + 2, rgb(182,182,219));
+      break;
+    }
+    case 6: {  // Someone's still home; the bulb flickers.
+      const bool off = (now / 90 + kind) % 31 == 0;
+      gameFrame.fillRect(x, y, w, h, off ? rgb(73,73,36) : rgb(255,219,109));
+      gameFrame.fillRect(x, y, w / 2, h, off ? rgb(73,36,36) : rgb(219,146,73));  // Torn curtain.
+      break;
+    }
+    default:  // Empty frame, the glass long gone.
+      gameFrame.fillRect(x, y, w, h, rgb(0,0,0));
+      gameFrame.drawFastHLine(x, y + h / 2, w, rgb(73,73,73));
+  }
+  gameFrame.drawFastHLine(x - 2, y + h + 1, w + 4, rgb(146,146,146));  // Sill.
+}
+
+constexpr int streetTop = 166;
+void building(int x, int w, int top, int idx, uint32_t now) {
+  const uint16_t walls[3] = {rgb(146,73,36), rgb(109,73,73), rgb(109,109,109)};
+  const uint16_t c = walls[idx % 3], mortar = GameGfx::darker(c);
+  gameFrame.fillRect(x, top, w, streetTop - top, c);
+  if (idx % 3 != 2) {
+    // Brick courses with staggered joints.
+    for (int y = top + 5, row = 0; y < streetTop; y += 6, ++row) {
+      gameFrame.drawFastHLine(x, y, w, mortar);
+      for (int bx = x + (row % 2) * 6; bx < x + w; bx += 12) gameFrame.drawFastVLine(bx, y - 5, 5, mortar);
+    }
+  } else {
+    // Stained concrete.
+    for (int i = 0; i < 4; ++i) gameFrame.fillRect(x + 10 + i * w / 4, top + 6, 3, 30 + (int)(cityHash(idx, i) % 40), mortar);
+  }
+  // Crumbling roof ledge with a chunk missing.
+  const int gap = x + 20 + (int)(cityHash(idx, 9) % (uint32_t)max(1, w - 50));
+  gameFrame.fillRect(x - 2, top - 4, gap - x + 2, 5, mortar);
+  gameFrame.fillRect(gap + 14, top - 4, x + w + 2 - gap - 14, 5, mortar);
+  gameFrame.fillTriangle(gap, top, gap + 14, top, gap + 7, top + 9, rgb(36,0,73));
+  // Windows above the ground floor.
+  const int cols = (w - 12) / 26;
+  const int x0 = x + (w - (cols * 26 - 10)) / 2;
+  for (int r = 0; top + 12 + r * 30 + 20 < streetTop - 34; ++r)
+    for (int col = 0; col < cols; ++col)
+      cityWindow(x0 + col * 26, top + 12 + r * 30, 16, 20, cityHash(idx * 8 + col, r), now);
+  // A long crack running down the wall.
+  int cx = x + w / 4 + (int)(cityHash(idx, 3) % (uint32_t)(w / 2)), cy = top + 8;
+  for (int i = 0; i < 5; ++i) {
+    const int nx = cx + (i % 2 ? 4 : -3), ny = cy + 9;
+    gameFrame.drawLine(cx, cy, nx, ny, rgb(36,36,36));
+    cx = nx; cy = ny;
+  }
+  // Ground floor: a dented roll-down shutter with graffiti.
+  const int sx = x + w / 2 - 22;
+  gameFrame.fillRect(sx, streetTop - 30, 44, 30, rgb(146,146,146));
+  for (int y = streetTop - 27; y < streetTop; y += 4) gameFrame.drawFastHLine(sx, y, 44, rgb(109,109,109));
+  gameFrame.drawRect(sx - 2, streetTop - 32, 48, 32, rgb(73,73,73));
+  const uint16_t paint[3] = {rgb(255,73,182), rgb(73,219,255), rgb(146,255,73)};
+  const uint16_t tag = paint[idx % 3];
+  for (int i = 0; i < 4; ++i)
+    gameFrame.drawLine(sx + 6 + i * 9, streetTop - 12 - (i % 2) * 8, sx + 12 + i * 9, streetTop - 20 + (i % 2) * 8, tag);
+  // Rusty fire escape on every other building.
+  if (idx % 2) {
+    const int fx = x + w - 22;
+    for (int y = top + 34; y < streetTop - 40; y += 30) {
+      gameFrame.fillRect(fx - 4, y, 26, 2, rgb(73,36,36));
+      gameFrame.drawFastVLine(fx - 4, y - 10, 10, rgb(73,36,36));
+      gameFrame.drawFastVLine(fx + 21, y - 10, 10, rgb(73,36,36));
+      gameFrame.drawLine(fx, y + 2, fx + 16, y + 28, rgb(73,36,36));
+    }
+  }
+}
+
+void trashCan(int x, int y) {
+  gameFrame.fillRoundRect(x - 9, y - 22, 18, 22, 3, rgb(109,109,109));
+  for (int i = -5; i <= 5; i += 5) gameFrame.drawFastVLine(x + i, y - 20, 18, rgb(73,73,73));
+  gameFrame.fillCircle(x + 4, y - 12, 3, rgb(146,146,146));  // Dent.
+  limb(x - 12, y - 23, x + 9, y - 29, 3, rgb(146,146,146));  // Lid knocked askew.
+  gameFrame.fillEllipse(x + 14, y - 3, 6, 4, rgb(36,36,36));  // Spilled bag.
+  gameFrame.fillRect(x - 16, y - 3, 5, 3, rgb(219,219,182));
+}
+
+void fireBarrel(int x, int y, uint32_t now) {
+  GameGfx::glow(x, y - 30, 26, rgb(255,146,0));
+  for (int i = -1; i <= 1; ++i) {
+    const int h = 10 + (int)((now / 70 + i * 3) % 6);
+    gameFrame.fillTriangle(x + i * 5 - 4, y - 22, x + i * 5 + 4, y - 22, x + i * 5, y - 22 - h, i ? rgb(255,146,0) : rgb(255,219,0));
+  }
+  gameFrame.fillRoundRect(x - 10, y - 24, 20, 24, 3, rgb(146,73,36));
+  gameFrame.drawFastHLine(x - 10, y - 17, 20, rgb(73,36,0));
+  gameFrame.drawFastHLine(x - 10, y - 7, 20, rgb(73,36,0));
+  gameFrame.fillRect(x - 3, y - 13, 4, 4, rgb(36,0,0));  // Rust hole.
+}
+
+void streetLamp(int x, bool broken, uint32_t now) {
+  gameFrame.fillRect(x - 1, 92, 3, streetTop + 8 - 92, rgb(36,36,36));
+  if (broken) {
+    // Bent over and dark.
+    limb(x, 92, x - 14, 100, 3, rgb(36,36,36));
+    gameFrame.fillRect(x - 20, 99, 10, 5, rgb(73,73,73));
+    return;
+  }
+  limb(x, 92, x + 12, 88, 3, rgb(36,36,36));
+  const bool on = (now / 60 + x) % 23 > 3;  // Buzzing, flickering bulb.
+  if (on) GameGfx::glow(x + 14, 96, 22, rgb(255,219,109));
+  gameFrame.fillRect(x + 9, 89, 10, 5, on ? rgb(255,255,182) : rgb(109,109,73));
+}
+
+void drawCity(int cam, uint32_t now) {
+  // Smoggy dusk sky.
+  GameGfx::gradient(0, 32, 320, streetTop - 32, rgb(36,0,73), rgb(219,109,73));
+  const int moonX = 60 - cam / 24;
+  gameFrame.fillCircle(moonX, 58, 9, rgb(219,182,146));
+  // Far skyline silhouettes drift slowly.
+  for (int i = -1; i < 9; ++i) {
+    const int world = i + cam / 4 / 44;
+    const int bx = world * 44 - cam / 4, h = 40 + (int)(cityHash(world, 1) % 50);
+    gameFrame.fillRect(bx, streetTop - 30 - h, 40, h + 30, rgb(73,36,73));
+    for (int k = 0; k < 4; ++k) {
+      const uint32_t v = cityHash(world, k + 2);
+      if (v % 3 == 0) gameFrame.fillRect(bx + 6 + (v / 3) % 28, streetTop - 26 - h + (int)((v / 97) % (uint32_t)h), 2, 2, rgb(255,219,109));
+    }
+  }
+  // Run-down buildings line the street (world layer).
+  const int bxs[] = {-40, 110, 270, 410, 560, 720, 870, 1020, 1180, 1330, 1480, 1640};
+  const int bws[] = {140, 150, 130, 140, 150, 140, 140, 150, 140, 140, 150, 180};
+  const int tops[] = {60, 80, 50, 72, 58, 90, 64, 54, 78, 62, 70, 56};
+  for (int i = 0; i < 12; ++i)
+    if (bxs[i] + bws[i] - cam > 0 && bxs[i] - cam < 320) building(bxs[i] - cam, bws[i], tops[i], i, now);
+  // Brock's name sprayed on the last wall.
+  if (cam > arenaStart - 320) {
+    gameFrame.setTextColor(rgb(255,36,36));
+    gameFrame.drawString("BROCK", 1652 - cam, 122, 4);
+  }
+  // Cracked sidewalk and curb.
+  gameFrame.fillRect(0, streetTop, 320, 12, rgb(146,146,146));
+  for (int x = -(cam % 40); x < 320; x += 40) gameFrame.drawFastVLine(x, streetTop, 12, rgb(109,109,109));
+  gameFrame.fillRect(0, streetTop + 12, 320, 3, rgb(182,182,182));
+  // Asphalt with potholes, cracks and a faded center line.
+  GameGfx::gradient(0, streetTop + 15, 320, 240 - streetTop - 15, rgb(73,73,73), rgb(36,36,36));
+  for (int x = -(cam % 50); x < 320; x += 50)
+    if (((x + cam) / 50) % 3) gameFrame.fillRect(x, 226, 22, 3, rgb(146,146,73));
+  const int potholes[] = {380, 820, 1260};
+  for (int p : potholes) {
+    const int x = p - cam;
+    if (x < -30 || x > 350) continue;
+    gameFrame.fillEllipse(x, 214, 18, 5, rgb(0,0,0));
+    gameFrame.drawEllipse(x, 214, 19, 6, rgb(109,109,109));
+  }
+  const int cracks[] = {200, 640, 1080, 1560};
+  for (int c : cracks) {
+    int x = c - cam, y = streetTop + 18;
+    if (x < -40 || x > 360) continue;
+    for (int i = 0; i < 5; ++i) { const int nx = x + 8, ny = y + (i % 2 ? -3 : 5); gameFrame.drawLine(x, y, nx, ny, rgb(0,0,0)); x = nx; y = ny; }
+  }
+  // Props sit on the sidewalk behind the fighting line.
+  const int cans[] = {330, 780, 1240}, barrels[] = {520, 1000, 1560, 1760}, lamps[] = {240, 690, 1140, 1520};
+  for (int i = 0; i < 4; ++i)
+    if (lamps[i] - cam > -30 && lamps[i] - cam < 350) streetLamp(lamps[i] - cam, i % 2 == 1, now);
+  for (int c : cans) if (c - cam > -30 && c - cam < 350) trashCan(c - cam, streetTop + 12);
+  for (int b : barrels) if (b - cam > -40 && b - cam < 360) fireBarrel(b - cam, streetTop + 12, now);
+}
+
 // ---- Shipwreck backdrop ----------------------------------------------------
 void barrel(int x, int y) {
   gameFrame.fillRoundRect(x - 10, y - 26, 20, 26, 5, rgb(146,73,0));
@@ -407,24 +709,26 @@ void hud() {
   for (int i = 0; i < h.health; ++i)
     gameFrame.fillRect(64 + i * 9, 15, 7, 9, i < player.hp ? rgb(255,36,85) : rgb(73,36,36));
   if (boss.active) {
-    gameFrame.setTextColor(rgb(146,255,255));
-    gameFrame.drawRightString("DAVY JONES", 314, 4, 1);
-    for (int i = 0; i < bossMaxHp; ++i)
-      gameFrame.fillRect(224 + i * 9, 15, 7, 9, i < boss.hp ? rgb(73,219,146) : rgb(36,73,73));
+    gameFrame.setTextColor(level ? rgb(255,109,109) : rgb(146,255,255));
+    gameFrame.drawRightString(level ? "BROCK" : "DAVY JONES", 314, 4, 1);
+    const int x0 = 316 - bossMaxHp() * 9;
+    for (int i = 0; i < bossMaxHp(); ++i)
+      gameFrame.fillRect(x0 + i * 9, 15, 7, 9, i < boss.hp ? (level ? rgb(255,73,36) : rgb(73,219,146)) : (level ? rgb(73,36,36) : rgb(36,73,73)));
   } else {
     char text[24];
     snprintf(text, sizeof(text), "KOs %d", kos);
     gameFrame.setTextColor(rgb(255,219,85));
-    gameFrame.drawRightString("SHIPWRECK", 314, 4, 1);
+    gameFrame.drawRightString(level ? "CITY STREETS" : "SHIPWRECK", 314, 4, 1);
     gameFrame.drawRightString(text, 314, 16, 1);
   }
 }
 
 void renderLevel(uint32_t now) {
   const int cam = (int)camera + (shake > 0 ? random(-4, 5) : 0);
-  drawShip(cam, now);
+  if (level) drawCity(cam, now);
+  else drawShip(cam, now);
   // Red target circle for the boss's sword slam.
-  if (boss.active && boss.charge > 0) {
+  if (!level && boss.active && boss.charge > 0) {
     const int cx = (int)boss.superX - cam;
     GameGfx::darkenEllipse(cx, floorY, (int)superRadius, 11);
     const bool pulse = (now / 120) % 2;
@@ -439,9 +743,15 @@ void renderLevel(uint32_t now) {
     for (int i = 0; i < 6; ++i)
       gameFrame.fillRect(cx - 40 + i * 16, floorY - 10 - (int)(boss.slamFx * 60 * ((i % 3) + 1)), 4, 4, rgb(182,146,73));
   }
-  if (boss.active && (boss.dying <= 0 || (now / 80) % 2)) drawBoss((int)boss.x - cam);
+  if (boss.active && (boss.dying <= 0 || (now / 80) % 2)) {
+    if (level) drawBrock((int)boss.x - cam, now);
+    else drawBoss((int)boss.x - cam);
+  }
   for (const Enemy &e : enemies)
-    if (e.active && (e.dying <= 0 || (now / 60) % 2)) drawPirate(e, (int)e.x - cam);
+    if (e.active && (e.dying <= 0 || (now / 60) % 2)) {
+      if (level) drawThug(e, (int)e.x - cam);
+      else drawPirate(e, (int)e.x - cam);
+    }
   if (player.immunity <= 0 || (now / 70) % 2) {
     const Pose pose = player.attackAnim > 0 ? (player.attackKind ? KICK : PUNCH) : IDLE;
     drawHero(hero, (int)player.x - cam, floorY, player.facing, player.walk, pose);
@@ -457,7 +767,9 @@ void renderLevel(uint32_t now) {
     gameFrame.fillRoundRect(30, 40, 260, 24, 8, rgb(0,0,0));
     gameFrame.drawRoundRect(30, 40, 260, 24, 8, rgb(146,0,0));
     gameFrame.setTextColor(TFT_WHITE);
-    gameFrame.drawCentreString(boss.active ? "DAVY JONES RISES FROM THE DEEP!" : "P0/P1 MOVE  P2 PUNCH  P3 KICK", 160, 46, 2);
+    const char *text = boss.active ? (level ? "BROCK STEPS OUT OF THE ALLEY!" : "DAVY JONES RISES FROM THE DEEP!")
+                     : level ? "LEVEL 2: CITY STREETS" : "P0/P1 MOVE  P2 PUNCH  P3 KICK";
+    gameFrame.drawCentreString(text, 160, 46, 2);
   } else if (!waveActive && !boss.active && goTimer > 0 && (now / 250) % 2) {
     gameFrame.setTextColor(rgb(255,219,0));
     gameFrame.drawString("GO >", 262, 44, 4);
@@ -467,14 +779,16 @@ void renderLevel(uint32_t now) {
     gameFrame.fillRoundRect(26, 62, 268, 146, 12, rgb(36,0,0));
     gameFrame.drawRoundRect(26, 62, 268, 146, 12, rgb(255,36,0));
     gameFrame.setTextColor(stage == VICTORY ? rgb(255,219,0) : rgb(255,73,85));
-    gameFrame.drawCentreString(stage == VICTORY ? "SHIPWRECK CLEARED!" : "KNOCKED OUT", 160, 76, 4);
+    gameFrame.drawCentreString(stage == VICTORY ? (level ? "CITY CLEARED!" : "SHIPWRECK CLEARED!") : "KNOCKED OUT", 160, 76, 4);
     char line[40];
-    snprintf(line, sizeof(line), "%s  -  %d pirates KO'd", heroes[hero].name, kos);
+    snprintf(line, sizeof(line), "%s  -  %d %s KO'd", heroes[hero].name, kos, level ? "thugs" : "pirates");
     gameFrame.setTextColor(TFT_WHITE);
     gameFrame.drawCentreString(line, 160, 112, 2);
-    if (stage == VICTORY) gameFrame.drawCentreString("Davy Jones is sent back to the deep.", 160, 132, 2);
+    if (stage == VICTORY)
+      gameFrame.drawCentreString(level ? "Brock runs off. The city is safe!" : "Davy Jones is sent back to the deep.", 160, 132, 2);
     const TouchButton *buttons[2] = {&retryButton, &menuButton};
-    const char *labels[2] = {"FIGHT AGAIN", "HOME"};
+    const bool next = stage == VICTORY && level + 1 < levelCount;
+    const char *labels[2] = {next ? "NEXT LEVEL" : "FIGHT AGAIN", "HOME"};
     for (int i = 0; i < 2; ++i) {
       const TouchButton &b = *buttons[i];
       gameFrame.fillRoundRect(b.x, b.y, b.w, b.h, 8, i ? rgb(73,0,73) : rgb(146,0,0));
@@ -507,16 +821,17 @@ void hurtPlayer(int amount, float from) {
   if (player.hp == 0) { stage = DEFEAT; GameAudio::play(GameAudio::Lose); }
 }
 
-void startFight(int chosen) {
+void startFight(int chosen, int lvl) {
   GameAudio::stop();
   GameAudio::play(GameAudio::Start);
   hero = chosen;
+  level = lvl;
   stage = ACTIVE;
   player = {60, 1, heroes[hero].health, 0, 0, 0, 0, 0, false};
   for (Enemy &e : enemies) e.active = false;
   for (Spark &s : sparks) s.t = 0;
   boss = {};
-  boss.hp = bossMaxHp; boss.facing = -1;
+  boss.hp = bossMaxHp(); boss.facing = -1;
   camera = shake = goTimer = endTimer = 0;
   banner = 3.5f; kos = 0;
   wave = spawned = 0; waveActive = false; spawnTimer = 0;
@@ -548,9 +863,9 @@ void hitBoss(bool kick) {
   if (boss.hp <= 0) return;
   boss.hp--;
   boss.flash = 0.15f;
-  if (boss.charge <= 0) { boss.stun = 0.2f; boss.windup = 0; }
+  if (boss.charge <= 0 && boss.dash <= 0) { boss.stun = 0.2f; boss.windup = 0; }
   spark(boss.x - player.facing * 10, floorY - boss.lift - (kick ? 40 : 62));
-  if (boss.hp <= 0) { boss.dying = 1.5f; boss.charge = 0; boss.lift = 0; GameAudio::play(GameAudio::Crash); }
+  if (boss.hp <= 0) { boss.dying = 1.5f; boss.charge = boss.dash = boss.daze = 0; boss.lift = 0; GameAudio::play(GameAudio::Crash); }
 }
 
 void attack(bool kick) {
@@ -613,6 +928,55 @@ void updateEnemies(float dt) {
     }
 }
 
+// Brock: heavy punches, and a charge he warns about by flashing red.
+void updateBrock(float dt) {
+  boss.daze = max(0.0f, boss.daze - dt);
+  if (boss.charge > 0) {
+    // Flashing red, locked facing the spot the player was in.
+    boss.charge -= dt;
+    if (boss.charge <= 0) { boss.dash = 3; GameAudio::play(GameAudio::Sword); }
+    return;
+  }
+  if (boss.dash > 0) {
+    boss.dash -= dt;
+    boss.x += boss.facing * brockDashSpeed * dt;
+    boss.walk += dt * 18;
+    if (fabsf(player.x - boss.x) < 24) hurtPlayer(2, boss.x - boss.facing * 50);
+    const float lo = arenaStart + 24, hi = levelEnd - 24;
+    const bool wall = boss.x <= lo || boss.x >= hi;
+    if (wall || (boss.x - boss.superX) * boss.facing >= 0 || boss.dash <= 0) {
+      boss.x = constrain(boss.x, lo, hi);
+      boss.dash = 0;
+      // Crashing into a wall leaves him seeing stars: a chance to hit back.
+      boss.rest = wall ? 2.0f : 0.9f;
+      boss.daze = wall ? 2.0f : 0;
+      if (wall) { shake = 0.3f; GameAudio::play(GameAudio::Crash); }
+    }
+    return;
+  }
+  const float dist = player.x - boss.x;
+  boss.facing = dist >= 0 ? 1 : -1;
+  boss.superTimer -= dt;
+  if (boss.stun > 0) { boss.stun -= dt; return; }
+  if (boss.superTimer <= 0 && boss.windup <= 0 && boss.rest <= 0) {
+    boss.charge = brockFlash; boss.superTimer = 6.5f;
+    boss.superX = player.x + boss.facing * brockOvershoot;
+    GameAudio::play(GameAudio::Warning);
+    return;
+  }
+  if (boss.windup > 0) {
+    boss.windup -= dt;
+    if (boss.windup <= 0) {
+      if (fabsf(dist) < 50) hurtPlayer(1, boss.x);
+      boss.rest = 0.6f;
+    }
+    return;
+  }
+  if (boss.rest > 0) { boss.rest -= dt; return; }
+  if (fabsf(dist) > 40) { boss.x += boss.facing * 36 * dt; boss.walk += dt * 7; }
+  else boss.windup = 0.6f;
+}
+
 void updateBoss(float dt) {
   boss.flash = max(0.0f, boss.flash - dt);
   boss.slamFx = max(0.0f, boss.slamFx - dt);
@@ -621,6 +985,7 @@ void updateBoss(float dt) {
     if (boss.dying <= 0) { boss.active = false; stage = VICTORY; GameAudio::play(GameAudio::Win); }
     return;
   }
+  if (level) { updateBrock(dt); return; }
   const float dist = player.x - boss.x;
   if (boss.charge > 0) {
     // Crouch, then leap in an arc onto the red circle and slam the sword down.
@@ -703,7 +1068,7 @@ void step(float dt, uint8_t held, uint8_t pressed) {
     camera = constrain(player.x - 130, 0.0f, arenaStart);
   }
   if (!boss.active && wave >= waveCount && player.x >= arenaStart + 40) {
-    boss.active = true; boss.x = levelEnd - 60; boss.superTimer = 4; boss.hp = bossMaxHp;
+    boss.active = true; boss.x = levelEnd - 60; boss.superTimer = 4; boss.hp = bossMaxHp();
     banner = 2.5f;
     GameAudio::play(GameAudio::Warning);
   }
@@ -727,11 +1092,16 @@ void updateBlackKnight(uint32_t now, bool tapped, uint16_t x, uint16_t y, uint8_
   using namespace BlackKnight;
   if (tapped && exitButton.contains(x, y)) { drawHomeMenu(); return; }
   if (stage == SELECT) {
-    for (int i = 0; i < 3; ++i) if (tapped && heroCards[i].contains(x, y)) startFight(i);
+    for (int i = 0; i < 3; ++i) if (tapped && heroCards[i].contains(x, y)) startFight(i, 0);
     return;
   }
   if (stage == VICTORY || stage == DEFEAT) {
-    if (tapped && retryButton.contains(x, y)) { startFight(hero); return; }
+    if (tapped && retryButton.contains(x, y)) {
+      // Win: on to the next level, or back to the first after the last one.
+      // Lose: try the same level again.
+      startFight(hero, stage == DEFEAT ? level : (level + 1) % levelCount);
+      return;
+    }
     if (tapped && menuButton.contains(x, y)) { drawHomeMenu(); return; }
   }
   pendingPresses |= pressed;

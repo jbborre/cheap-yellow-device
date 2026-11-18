@@ -56,11 +56,11 @@ struct TouchButton {
   bool contains(uint16_t tx, uint16_t ty) const {
     return tx >= x && tx < x + w && ty >= y && ty < y + h;
   }
-} chooseGameButton, saucerMenuButton, yodaMenuButton, driveMenuButton, zombieMenuButton, backButton;
+} chooseGameButton, saucerMenuButton, yodaMenuButton, driveMenuButton, roadTripMenuButton, zombieMenuButton, backButton;
 
 #include "include/UiNavigation.h"
 
-enum GameState { HOME_MENU, GAME_LIST, SAUCER_PLAYING, SAUCER_RESULTS, YODA_PLAYING, CITY_DRIVING, ZOMBIE_CRASH, BLACK_KNIGHT, SETTINGS };
+enum GameState { HOME_MENU, GAME_LIST, SAUCER_PLAYING, SAUCER_RESULTS, YODA_PLAYING, CITY_DRIVING, ZOMBIE_CRASH, BLACK_KNIGHT, SETTINGS, ROAD_TRIP };
 GameState gameState = HOME_MENU;
 bool touchWasDown = false;
 const TouchButton settingsButton={5,5,36,30};
@@ -273,6 +273,14 @@ void drawGameIcon(int game, int x, int y, uint32_t now) {
     gameFrame.fillRect(x-5,y-6,10,4,rgb(146,219,255));
     gameFrame.fillCircle(x-7,y+7,3,TFT_BLACK);
     gameFrame.fillCircle(x+7,y+7,3,TFT_BLACK);
+  } else if (game==4) {
+    // A road running to the horizon with a checkered flag.
+    gameFrame.fillTriangle(x-14,y+10,x+14,y+10,x,y-8,rgb(109,109,109));
+    gameFrame.drawFastVLine(x,y+1,4,TFT_WHITE);
+    gameFrame.drawFastVLine(x,y-4,2,TFT_WHITE);
+    gameFrame.drawFastVLine(x+9,y-11,14,TFT_WHITE);
+    for (int i=0;i<3;++i) for (int k=0;k<2;++k)
+      gameFrame.fillRect(x+10+i*2,y-11+k*2,2,2,(i+k)%2 ? TFT_BLACK : TFT_WHITE);
   } else {
     const uint16_t skin=rgb(109,182,85);
     gameFrame.fillRoundRect(x-8,y-10,16,18,5,skin);
@@ -316,6 +324,7 @@ void drawGameList(uint32_t now) {
   drawGameCard(saucerMenuButton,0,"SPACE SAUCER",COLOR_PURPLE,now);
   drawGameCard(yodaMenuButton,1,"BABY YODA",rgb(73,182,85),now);
   drawGameCard(driveMenuButton,2,"CITY DRIVE",rgb(255,146,0),now);
+  drawGameCard(roadTripMenuButton,4,"ROAD TRIP RALLY",rgb(0,182,255),now);
   drawGameCard(zombieMenuButton,3,"ZOMBIE CRASH",rgb(219,36,0),now);
   UiNavigation::draw();
   gameFrame.pushSprite(0,0);
@@ -408,6 +417,7 @@ void touchCalibrate() {
 #include "include/ZombieCrash.h"
 #include "include/BabyYoda.h"
 #include "include/BlackKnight.h"
+#include "include/RoadTrip.h"
 
 void saveSoundSettings() {
   Preferences prefs;
@@ -472,7 +482,7 @@ void navigateUi(uint8_t pressed, bool &touching, bool &tapped, uint16_t &x, uint
       items[count++]=&volumeUpButton; back=&settingsBackButton; break;
     case GAME_LIST:
       items[count++]=&saucerMenuButton; items[count++]=&yodaMenuButton;
-      items[count++]=&driveMenuButton; items[count++]=&zombieMenuButton;
+      items[count++]=&driveMenuButton; items[count++]=&roadTripMenuButton; items[count++]=&zombieMenuButton;
       back=&backButton; break;
     case SAUCER_RESULTS:
       items[count++]=&SpaceSaucer::againButton; items[count++]=&SpaceSaucer::menuButton;
@@ -493,6 +503,9 @@ void navigateUi(uint8_t pressed, bool &touching, bool &tapped, uint16_t &x, uint
         context++; items[count++]=&CityDrive::retryButton; back=&CityDrive::exitButton;
       }
       break;
+    case ROAD_TRIP:
+      context+=(int)RoadTrip::stage;
+      count=RoadTrip::navItems(items); back=&RoadTrip::exitButton; break;
     case BLACK_KNIGHT:
       context+=(int)BlackKnight::stage;
       if (BlackKnight::stage==BlackKnight::SELECT) {
@@ -527,6 +540,7 @@ void navigateUi(uint8_t pressed, bool &touching, bool &tapped, uint16_t &x, uint
     else if (gameState==CITY_DRIVING) CityDrive::render(false,0,0);
     else if (gameState==ZOMBIE_CRASH) ZombieCrash::render(false,0,0,0);
     else if (gameState==BLACK_KNIGHT) BlackKnight::render();
+    else if (gameState==ROAD_TRIP) RoadTrip::render();
   }
   const TouchButton *activate=(pressed & 8) ? back : (pressed & 4) ? UiNavigation::target : nullptr;
   if (activate) {
@@ -577,6 +591,7 @@ void sleepFromBootButton() {
   CityDrive::lastFrame += pausedFor;
   ZombieCrash::lastFrame += pausedFor;
   BlackKnight::lastFrame += pausedFor;
+  RoadTrip::lastFrame += pausedFor;
   // A finger left on the screen must not become a new tap on waking.
   touchWasDown = touch.touched();
   if (error != ESP_OK) Serial.printf("Sleep failed: %s\n", esp_err_to_name(error));
@@ -617,10 +632,11 @@ void setup() {
   ExpanderButtons::begin();
   randomSeed(micros());
   chooseGameButton = {(int16_t)((GameDisplay::width - 190) / 2), 181, 190, 48};
-  saucerMenuButton = {20, 81, 280, 33};
-  yodaMenuButton = {20, 120, 280, 33};
-  driveMenuButton = {20, 159, 280, 33};
-  zombieMenuButton = {20, 198, 280, 33};
+  saucerMenuButton = {20, 78, 280, 29};
+  yodaMenuButton = {20, 110, 280, 29};
+  driveMenuButton = {20, 142, 280, 29};
+  roadTripMenuButton = {20, 174, 280, 29};
+  zombieMenuButton = {20, 206, 280, 29};
   backButton = {8, 6, 60, 25};
   Serial.println("Checking touch calibration");
   touchCalibrate();
@@ -677,6 +693,7 @@ void loop() {
     else if (tapped && saucerMenuButton.contains(x, y)) beginSpaceSaucer();
     else if (tapped && yodaMenuButton.contains(x, y)) beginYodaGame();
     else if (tapped && driveMenuButton.contains(x, y)) beginCityDrive();
+    else if (tapped && roadTripMenuButton.contains(x, y)) beginRoadTrip();
     else if (tapped && zombieMenuButton.contains(x, y)) beginZombieCrash();
   } else if (gameState == SAUCER_RESULTS) {
     SpaceSaucer::updateResults(touching, tapped, x, y);
@@ -684,6 +701,8 @@ void loop() {
     updateSpaceSaucer(now, tapped, x, y);
   } else if (gameState == CITY_DRIVING) {
     updateCityDrive(now, touching, tapped, x, y, ExpanderButtons::held);
+  } else if (gameState == ROAD_TRIP) {
+    RoadTrip::update(now, touching, tapped, x, y, ExpanderButtons::held);
   } else if (gameState == BLACK_KNIGHT) {
     updateBlackKnight(now, tapped, x, y, ExpanderButtons::held, ExpanderButtons::pressed);
   } else if (gameState == ZOMBIE_CRASH) {
@@ -693,7 +712,8 @@ void loop() {
   }
 
   BabyYoda::tick(millis());
-  GameAudio::engine(gameState==CITY_DRIVING && !CityDrive::finished && !CityDrive::choosing ? CityDrive::speed : 0);
+  GameAudio::engine(gameState==CITY_DRIVING && !CityDrive::finished && !CityDrive::choosing ? CityDrive::speed
+                    : gameState==ROAD_TRIP && RoadTrip::engineOn() ? RoadTrip::engineSpeed() : 0);
   GameAudio::update(millis());
   DamageLed::update(millis());
   touchWasDown = actualTouching;

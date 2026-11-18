@@ -27,6 +27,7 @@ We added to it along the way:
 | **Space Saucer** | Tap flying saucers before time runs out. |
 | **Baby Yoda** | A virtual pet. Feed him, play a catch mini-game with him, and put him to bed. He remembers how he's doing even after the console is turned off. |
 | **City Drive** | Race through a city at sunset, around curves and through traffic. Go over 75 mph and the police will chase you. |
+| **Road Trip Rally** | Race across five stages, from the beach to a neon city at night. Pass rival racers, dodge traffic and reach each checkpoint before the clock runs out. |
 | **Zombie Crash** | Pick a hero and a weapon, then fight through levels of zombies and a boss. |
 
 There's also a settings screen for turning sound on or off and setting the volume.
