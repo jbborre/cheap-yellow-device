@@ -27,6 +27,7 @@ We added to it along the way:
 | **Space Saucer** | Tap flying saucers before time runs out. |
 | **Baby Yoda** | A virtual pet. Feed him, play a catch mini-game with him, and put him to bed. He remembers how he's doing even after the console is turned off. |
 | **City Drive** | Race through a city at sunset, around curves and through traffic. Go over 75 mph and the police will chase you. |
+| **Road Trip Rally** | Race across five stages, from the beach to a neon city at night. Pass rival racers, dodge traffic and reach each checkpoint before the clock runs out. |
 | **Zombie Crash** | Pick a hero and a weapon, then fight through levels of zombies and a boss. |
 
 There's also a settings screen for turning sound on or off and setting the volume.
@@ -191,5 +192,6 @@ The more you describe, the better the result. Tell the assistant **what the game
 
 - Built with [PlatformIO](https://platformio.org/) and the Arduino framework for the ESP32.
 - Graphics are drawn to an off-screen 320×240 frame, and only the parts that changed are sent to the display, so animation stays smooth even over a slow connection.
+- Black Knight and Road Trip Rally use pre-rendered pixel art stored in flash. See [art/README.md](art/README.md) to change it or draw your own.
 - The same code runs on both the 2.8-inch (ILI9341) and 4-inch (ST7796S) boards; pick the matching build. [DISPLAY.md](DISPLAY.md) covers pins, wiring, battery sensing and performance.
 - Settings, the pet's state and game unlocks are saved in the ESP32's built-in flash memory, so they survive power-offs.

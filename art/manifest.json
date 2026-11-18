@@ -1,0 +1,1006 @@
+{
+ "BlackKnightArt": [
+  {
+   "file": "blackknight/knight_idle.png",
+   "name": "knightIdle",
+   "anchor": [
+    13,
+    59
+   ]
+  },
+  {
+   "file": "blackknight/knight_walk1.png",
+   "name": "knightWalk1",
+   "anchor": [
+    20,
+    58
+   ]
+  },
+  {
+   "file": "blackknight/knight_walk2.png",
+   "name": "knightWalk2",
+   "anchor": [
+    17,
+    58
+   ]
+  },
+  {
+   "file": "blackknight/knight_punch.png",
+   "name": "knightPunch",
+   "anchor": [
+    18,
+    58
+   ]
+  },
+  {
+   "file": "blackknight/knight_kick.png",
+   "name": "knightKick",
+   "anchor": [
+    20,
+    59
+   ]
+  },
+  {
+   "file": "blackknight/eclipse_idle.png",
+   "name": "eclipseIdle",
+   "anchor": [
+    19,
+    59
+   ]
+  },
+  {
+   "file": "blackknight/eclipse_walk1.png",
+   "name": "eclipseWalk1",
+   "anchor": [
+    21,
+    57
+   ]
+  },
+  {
+   "file": "blackknight/eclipse_walk2.png",
+   "name": "eclipseWalk2",
+   "anchor": [
+    21,
+    58
+   ]
+  },
+  {
+   "file": "blackknight/eclipse_punch.png",
+   "name": "eclipsePunch",
+   "anchor": [
+    18,
+    57
+   ]
+  },
+  {
+   "file": "blackknight/eclipse_kick.png",
+   "name": "eclipseKick",
+   "anchor": [
+    27,
+    59
+   ]
+  },
+  {
+   "file": "blackknight/spade_idle.png",
+   "name": "spadeIdle",
+   "anchor": [
+    14,
+    59
+   ]
+  },
+  {
+   "file": "blackknight/spade_walk1.png",
+   "name": "spadeWalk1",
+   "anchor": [
+    20,
+    57
+   ]
+  },
+  {
+   "file": "blackknight/spade_walk2.png",
+   "name": "spadeWalk2",
+   "anchor": [
+    17,
+    58
+   ]
+  },
+  {
+   "file": "blackknight/spade_punch.png",
+   "name": "spadePunch",
+   "anchor": [
+    18,
+    57
+   ]
+  },
+  {
+   "file": "blackknight/spade_kick.png",
+   "name": "spadeKick",
+   "anchor": [
+    21,
+    59
+   ]
+  },
+  {
+   "file": "blackknight/pirate_idle.png",
+   "name": "pirateIdle",
+   "anchor": [
+    11,
+    59
+   ]
+  },
+  {
+   "file": "blackknight/pirate_walk1.png",
+   "name": "pirateWalk1",
+   "anchor": [
+    20,
+    57
+   ]
+  },
+  {
+   "file": "blackknight/pirate_walk2.png",
+   "name": "pirateWalk2",
+   "anchor": [
+    17,
+    58
+   ]
+  },
+  {
+   "file": "blackknight/pirate_windup.png",
+   "name": "pirateWindup",
+   "anchor": [
+    15,
+    74
+   ]
+  },
+  {
+   "file": "blackknight/pirate_hurt.png",
+   "name": "pirateHurt",
+   "anchor": [
+    27,
+    57
+   ]
+  },
+  {
+   "file": "blackknight/brute_idle.png",
+   "name": "bruteIdle",
+   "anchor": [
+    14,
+    73
+   ]
+  },
+  {
+   "file": "blackknight/brute_walk1.png",
+   "name": "bruteWalk1",
+   "anchor": [
+    24,
+    72
+   ]
+  },
+  {
+   "file": "blackknight/brute_walk2.png",
+   "name": "bruteWalk2",
+   "anchor": [
+    21,
+    72
+   ]
+  },
+  {
+   "file": "blackknight/brute_windup.png",
+   "name": "bruteWindup",
+   "anchor": [
+    17,
+    77
+   ]
+  },
+  {
+   "file": "blackknight/brute_hurt.png",
+   "name": "bruteHurt",
+   "anchor": [
+    34,
+    71
+   ]
+  },
+  {
+   "file": "blackknight/captain_idle.png",
+   "name": "captainIdle",
+   "anchor": [
+    26,
+    104
+   ]
+  },
+  {
+   "file": "blackknight/captain_walk1.png",
+   "name": "captainWalk1",
+   "anchor": [
+    30,
+    102
+   ]
+  },
+  {
+   "file": "blackknight/captain_walk2.png",
+   "name": "captainWalk2",
+   "anchor": [
+    26,
+    102
+   ]
+  },
+  {
+   "file": "blackknight/captain_windup.png",
+   "name": "captainWindup",
+   "anchor": [
+    26,
+    126
+   ]
+  },
+  {
+   "file": "blackknight/captain_raise.png",
+   "name": "captainRaise",
+   "anchor": [
+    26,
+    130
+   ]
+  },
+  {
+   "file": "blackknight/captain_hurt.png",
+   "name": "captainHurt",
+   "anchor": [
+    48,
+    101
+   ]
+  },
+  {
+   "file": "blackknight/thug_idle.png",
+   "name": "thugIdle",
+   "anchor": [
+    11,
+    59
+   ]
+  },
+  {
+   "file": "blackknight/thug_walk1.png",
+   "name": "thugWalk1",
+   "anchor": [
+    20,
+    57
+   ]
+  },
+  {
+   "file": "blackknight/thug_walk2.png",
+   "name": "thugWalk2",
+   "anchor": [
+    17,
+    58
+   ]
+  },
+  {
+   "file": "blackknight/thug_windup.png",
+   "name": "thugWindup",
+   "anchor": [
+    14,
+    80
+   ]
+  },
+  {
+   "file": "blackknight/thug_hurt.png",
+   "name": "thugHurt",
+   "anchor": [
+    27,
+    57
+   ]
+  },
+  {
+   "file": "blackknight/bigthug_idle.png",
+   "name": "bigThugIdle",
+   "anchor": [
+    14,
+    76
+   ]
+  },
+  {
+   "file": "blackknight/bigthug_walk1.png",
+   "name": "bigThugWalk1",
+   "anchor": [
+    25,
+    74
+   ]
+  },
+  {
+   "file": "blackknight/bigthug_walk2.png",
+   "name": "bigThugWalk2",
+   "anchor": [
+    22,
+    75
+   ]
+  },
+  {
+   "file": "blackknight/bigthug_windup.png",
+   "name": "bigThugWindup",
+   "anchor": [
+    18,
+    80
+   ]
+  },
+  {
+   "file": "blackknight/bigthug_hurt.png",
+   "name": "bigThugHurt",
+   "anchor": [
+    36,
+    73
+   ]
+  },
+  {
+   "file": "blackknight/brock_idle.png",
+   "name": "brockIdle",
+   "anchor": [
+    17,
+    91
+   ]
+  },
+  {
+   "file": "blackknight/brock_walk1.png",
+   "name": "brockWalk1",
+   "anchor": [
+    30,
+    88
+   ]
+  },
+  {
+   "file": "blackknight/brock_walk2.png",
+   "name": "brockWalk2",
+   "anchor": [
+    26,
+    89
+   ]
+  },
+  {
+   "file": "blackknight/brock_windup.png",
+   "name": "brockWindup",
+   "anchor": [
+    21,
+    95
+   ]
+  },
+  {
+   "file": "blackknight/brock_dash.png",
+   "name": "brockDash",
+   "anchor": [
+    38,
+    79
+   ]
+  },
+  {
+   "file": "blackknight/brock_hurt.png",
+   "name": "brockHurt",
+   "anchor": [
+    42,
+    87
+   ]
+  },
+  {
+   "file": "blackknight/ship_sky.png",
+   "name": "shipSky",
+   "anchor": [
+    0,
+    0
+   ]
+  },
+  {
+   "file": "blackknight/ship_mast.png",
+   "name": "shipMast",
+   "anchor": [
+    73,
+    134
+   ]
+  },
+  {
+   "file": "blackknight/ship_railing.png",
+   "name": "shipRailing",
+   "anchor": [
+    0,
+    0
+   ]
+  },
+  {
+   "file": "blackknight/ship_deck.png",
+   "name": "shipDeck",
+   "anchor": [
+    0,
+    0
+   ]
+  },
+  {
+   "file": "blackknight/ship_hole.png",
+   "name": "shipHole",
+   "anchor": [
+    33,
+    10
+   ]
+  },
+  {
+   "file": "blackknight/ship_barrel.png",
+   "name": "shipBarrel",
+   "anchor": [
+    12,
+    29
+   ]
+  },
+  {
+   "file": "blackknight/ship_cannon.png",
+   "name": "shipCannon",
+   "anchor": [
+    24,
+    22
+   ]
+  },
+  {
+   "file": "blackknight/ship_crate.png",
+   "name": "shipCrate",
+   "anchor": [
+    14,
+    25
+   ]
+  },
+  {
+   "file": "blackknight/ship_wheel.png",
+   "name": "shipWheel",
+   "anchor": [
+    23,
+    59
+   ]
+  },
+  {
+   "file": "blackknight/ship_lantern.png",
+   "name": "shipLantern",
+   "anchor": [
+    6,
+    66
+   ]
+  },
+  {
+   "file": "blackknight/city_sky.png",
+   "name": "citySky",
+   "anchor": [
+    0,
+    0
+   ]
+  },
+  {
+   "file": "blackknight/city_street.png",
+   "name": "cityStreet",
+   "anchor": [
+    0,
+    0
+   ]
+  },
+  {
+   "file": "blackknight/city_pothole.png",
+   "name": "cityPothole",
+   "anchor": [
+    19,
+    6
+   ]
+  },
+  {
+   "file": "blackknight/city_trashcan.png",
+   "name": "cityTrashCan",
+   "anchor": [
+    18,
+    34
+   ]
+  },
+  {
+   "file": "blackknight/city_firebarrel_0.png",
+   "name": "cityFireBarrel0",
+   "anchor": [
+    11,
+    38
+   ]
+  },
+  {
+   "file": "blackknight/city_firebarrel_1.png",
+   "name": "cityFireBarrel1",
+   "anchor": [
+    11,
+    38
+   ]
+  },
+  {
+   "file": "blackknight/city_firebarrel_2.png",
+   "name": "cityFireBarrel2",
+   "anchor": [
+    11,
+    41
+   ]
+  },
+  {
+   "file": "blackknight/city_lamp_on.png",
+   "name": "cityLampOn",
+   "anchor": [
+    4,
+    86
+   ]
+  },
+  {
+   "file": "blackknight/city_lamp_off.png",
+   "name": "cityLampOff",
+   "anchor": [
+    4,
+    86
+   ]
+  },
+  {
+   "file": "blackknight/city_lamp_broken.png",
+   "name": "cityLampBroken",
+   "anchor": [
+    21,
+    84
+   ]
+  },
+  {
+   "file": "blackknight/cityBuilding0.png",
+   "name": "cityBuilding0",
+   "anchor": [
+    3,
+    114
+   ]
+  },
+  {
+   "file": "blackknight/cityBuilding1.png",
+   "name": "cityBuilding1",
+   "anchor": [
+    3,
+    94
+   ]
+  },
+  {
+   "file": "blackknight/cityBuilding2.png",
+   "name": "cityBuilding2",
+   "anchor": [
+    3,
+    124
+   ]
+  },
+  {
+   "file": "blackknight/cityBuilding3.png",
+   "name": "cityBuilding3",
+   "anchor": [
+    3,
+    102
+   ]
+  },
+  {
+   "file": "blackknight/cityBuilding4.png",
+   "name": "cityBuilding4",
+   "anchor": [
+    3,
+    116
+   ]
+  },
+  {
+   "file": "blackknight/cityBuilding5.png",
+   "name": "cityBuilding5",
+   "anchor": [
+    3,
+    84
+   ]
+  },
+  {
+   "file": "blackknight/cityBuildingBrock.png",
+   "name": "cityBuildingBrock",
+   "anchor": [
+    3,
+    118
+   ]
+  }
+ ],
+ "RoadTripArt": [
+  {
+   "file": "roadtrip/sky_coast.png",
+   "name": "skyCoast",
+   "anchor": [
+    0,
+    0
+   ]
+  },
+  {
+   "file": "roadtrip/sky_canyon.png",
+   "name": "skyCanyon",
+   "anchor": [
+    0,
+    0
+   ]
+  },
+  {
+   "file": "roadtrip/sky_peaks.png",
+   "name": "skyPeaks",
+   "anchor": [
+    0,
+    0
+   ]
+  },
+  {
+   "file": "roadtrip/sky_farm.png",
+   "name": "skyFarm",
+   "anchor": [
+    0,
+    0
+   ]
+  },
+  {
+   "file": "roadtrip/sky_night.png",
+   "name": "skyNight",
+   "anchor": [
+    0,
+    0
+   ]
+  },
+  {
+   "file": "roadtrip/prop_palm_big.png",
+   "name": "propPalmBig",
+   "anchor": [
+    9,
+    115
+   ]
+  },
+  {
+   "file": "roadtrip/prop_umbrella_big.png",
+   "name": "propUmbrellaBig",
+   "anchor": [
+    29,
+    69
+   ]
+  },
+  {
+   "file": "roadtrip/prop_cactus_big.png",
+   "name": "propCactusBig",
+   "anchor": [
+    25,
+    102
+   ]
+  },
+  {
+   "file": "roadtrip/prop_rock_big.png",
+   "name": "propRockBig",
+   "anchor": [
+    31,
+    29
+   ]
+  },
+  {
+   "file": "roadtrip/prop_pine_big.png",
+   "name": "propPineBig",
+   "anchor": [
+    41,
+    112
+   ]
+  },
+  {
+   "file": "roadtrip/prop_snowman_big.png",
+   "name": "propSnowmanBig",
+   "anchor": [
+    27,
+    77
+   ]
+  },
+  {
+   "file": "roadtrip/prop_barn_big.png",
+   "name": "propBarnBig",
+   "anchor": [
+    62,
+    102
+   ]
+  },
+  {
+   "file": "roadtrip/prop_haybale_big.png",
+   "name": "propHaybaleBig",
+   "anchor": [
+    15,
+    31
+   ]
+  },
+  {
+   "file": "roadtrip/prop_streetlight_big.png",
+   "name": "propStreetlightBig",
+   "anchor": [
+    6,
+    122
+   ]
+  },
+  {
+   "file": "roadtrip/prop_diner_big.png",
+   "name": "propDinerBig",
+   "anchor": [
+    35,
+    91
+   ]
+  },
+  {
+   "file": "roadtrip/prop_motel_big.png",
+   "name": "propMotelBig",
+   "anchor": [
+    35,
+    91
+   ]
+  },
+  {
+   "file": "roadtrip/prop_palm_small.png",
+   "name": "propPalmSmall",
+   "anchor": [
+    3,
+    40
+   ]
+  },
+  {
+   "file": "roadtrip/prop_umbrella_small.png",
+   "name": "propUmbrellaSmall",
+   "anchor": [
+    11,
+    24
+   ]
+  },
+  {
+   "file": "roadtrip/prop_cactus_small.png",
+   "name": "propCactusSmall",
+   "anchor": [
+    9,
+    35
+   ]
+  },
+  {
+   "file": "roadtrip/prop_rock_small.png",
+   "name": "propRockSmall",
+   "anchor": [
+    11,
+    11
+   ]
+  },
+  {
+   "file": "roadtrip/prop_pine_small.png",
+   "name": "propPineSmall",
+   "anchor": [
+    15,
+    38
+   ]
+  },
+  {
+   "file": "roadtrip/prop_snowman_small.png",
+   "name": "propSnowmanSmall",
+   "anchor": [
+    6,
+    27
+   ]
+  },
+  {
+   "file": "roadtrip/prop_barn_small.png",
+   "name": "propBarnSmall",
+   "anchor": [
+    22,
+    35
+   ]
+  },
+  {
+   "file": "roadtrip/prop_haybale_small.png",
+   "name": "propHaybaleSmall",
+   "anchor": [
+    6,
+    11
+   ]
+  },
+  {
+   "file": "roadtrip/prop_streetlight_small.png",
+   "name": "propStreetlightSmall",
+   "anchor": [
+    3,
+    42
+   ]
+  },
+  {
+   "file": "roadtrip/prop_diner_small.png",
+   "name": "propDinerSmall",
+   "anchor": [
+    13,
+    32
+   ]
+  },
+  {
+   "file": "roadtrip/prop_motel_small.png",
+   "name": "propMotelSmall",
+   "anchor": [
+    13,
+    32
+   ]
+  },
+  {
+   "file": "roadtrip/car_roadster_92.png",
+   "name": "carRoadster92",
+   "anchor": [
+    47,
+    57
+   ]
+  },
+  {
+   "file": "roadtrip/car_roadster_46.png",
+   "name": "carRoadster46",
+   "anchor": [
+    24,
+    29
+   ]
+  },
+  {
+   "file": "roadtrip/car_roadster_22.png",
+   "name": "carRoadster22",
+   "anchor": [
+    12,
+    15
+   ]
+  },
+  {
+   "file": "roadtrip/car_roadster_92l.png",
+   "name": "carRoadster92L",
+   "anchor": [
+    49,
+    57
+   ]
+  },
+  {
+   "file": "roadtrip/car_roadster_92r.png",
+   "name": "carRoadster92R",
+   "anchor": [
+    47,
+    57
+   ]
+  },
+  {
+   "file": "roadtrip/car_muscle_92.png",
+   "name": "carMuscle92",
+   "anchor": [
+    47,
+    49
+   ]
+  },
+  {
+   "file": "roadtrip/car_muscle_46.png",
+   "name": "carMuscle46",
+   "anchor": [
+    24,
+    25
+   ]
+  },
+  {
+   "file": "roadtrip/car_muscle_22.png",
+   "name": "carMuscle22",
+   "anchor": [
+    12,
+    13
+   ]
+  },
+  {
+   "file": "roadtrip/car_muscle_92l.png",
+   "name": "carMuscle92L",
+   "anchor": [
+    49,
+    49
+   ]
+  },
+  {
+   "file": "roadtrip/car_muscle_92r.png",
+   "name": "carMuscle92R",
+   "anchor": [
+    47,
+    49
+   ]
+  },
+  {
+   "file": "roadtrip/car_offroad_92.png",
+   "name": "carOffroad92",
+   "anchor": [
+    47,
+    75
+   ]
+  },
+  {
+   "file": "roadtrip/car_offroad_46.png",
+   "name": "carOffroad46",
+   "anchor": [
+    24,
+    38
+   ]
+  },
+  {
+   "file": "roadtrip/car_offroad_22.png",
+   "name": "carOffroad22",
+   "anchor": [
+    12,
+    19
+   ]
+  },
+  {
+   "file": "roadtrip/car_offroad_92l.png",
+   "name": "carOffroad92L",
+   "anchor": [
+    49,
+    75
+   ]
+  },
+  {
+   "file": "roadtrip/car_offroad_92r.png",
+   "name": "carOffroad92R",
+   "anchor": [
+    47,
+    75
+   ]
+  },
+  {
+   "file": "roadtrip/car_sedan_92.png",
+   "name": "carSedan92",
+   "anchor": [
+    47,
+    53
+   ]
+  },
+  {
+   "file": "roadtrip/car_sedan_46.png",
+   "name": "carSedan46",
+   "anchor": [
+    24,
+    27
+   ]
+  },
+  {
+   "file": "roadtrip/car_sedan_22.png",
+   "name": "carSedan22",
+   "anchor": [
+    12,
+    14
+   ]
+  },
+  {
+   "file": "roadtrip/car_van_92.png",
+   "name": "carVan92",
+   "anchor": [
+    47,
+    77
+   ]
+  },
+  {
+   "file": "roadtrip/car_van_46.png",
+   "name": "carVan46",
+   "anchor": [
+    24,
+    39
+   ]
+  },
+  {
+   "file": "roadtrip/car_van_22.png",
+   "name": "carVan22",
+   "anchor": [
+    12,
+    19
+   ]
+  },
+  {
+   "file": "roadtrip/car_truck_92.png",
+   "name": "carTruck92",
+   "anchor": [
+    49,
+    93
+   ]
+  },
+  {
+   "file": "roadtrip/car_truck_46.png",
+   "name": "carTruck46",
+   "anchor": [
+    25,
+    47
+   ]
+  },
+  {
+   "file": "roadtrip/car_truck_22.png",
+   "name": "carTruck22",
+   "anchor": [
+    13,
+    23
+   ]
+  }
+ ]
+}

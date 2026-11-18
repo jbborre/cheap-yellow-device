@@ -107,4 +107,112 @@ inline void glow(int cx, int cy, int r, uint16_t color) {
     }
   }
 }
+
+// ---- Pre-rendered images ------------------------------------------------------
+// Images are RGB332 pixels made by tools/art (see art/README.md). Each row is
+// run-length encoded on its own: a byte below 0x80 starts a run of (byte+1)
+// literal pixels, and a byte of 0x80 or more skips (byte-0x7F) transparent
+// pixels. (ax, ay) is the anchor, such as a character's feet, which is the
+// point placed at the drawing position. Images face right; flip mirrors them
+// around the anchor. A remap table recolors marker pixels, e.g. car bodies.
+struct Image { uint16_t w, h; int16_t ax, ay; const uint32_t *rows; const uint8_t *data; };
+
+// Marker colors that recolorable art is painted in; see art/README.md.
+constexpr uint8_t markerBody[4] = {0x61, 0xA2, 0xE3, 0xEB};  // Dark to highlight.
+constexpr uint8_t markerLight[2] = {0x10, 0x1C};             // Dim, bright.
+
+// Identity table with the marker entries set for one body color.
+inline const uint8_t *bodyRemap(uint16_t color, uint16_t lightDim = 0, uint16_t lightBright = 0) {
+  static uint8_t table[256];
+  static bool ready = false;
+  if (!ready) { for (int i = 0; i < 256; ++i) table[i] = (uint8_t)i; ready = true; }
+  const uint16_t ramp[4] = {mix565(color, 0, 1, 2), color, mix565(color, 0xFFFF, 1, 3), mix565(color, 0xFFFF, 2, 3)};
+  for (int i = 0; i < 4; ++i) table[markerBody[i]] = pack(ramp[i]);
+  table[markerLight[0]] = lightDim ? pack(lightDim) : markerLight[0];
+  table[markerLight[1]] = lightBright ? pack(lightBright) : markerLight[1];
+  return table;
+}
+
+// Decode one row into out[0..w): transparent pixels become 0x100.
+inline void decodeRow(const Image &img, int row, uint16_t *out) {
+  const uint8_t *p = img.data + img.rows[row];
+  int x = 0;
+  while (x < img.w) {
+    const uint8_t b = *p++;
+    if (b & 0x80) { for (int n = b - 0x7F; n > 0 && x < img.w; --n) out[x++] = 0x100; }
+    else { for (int n = b + 1; n > 0 && x < img.w; --n) out[x++] = *p++; }
+  }
+}
+
+// Draws at full size with its anchor on (x, y).
+inline void drawImage(const Image &img, int x, int y, bool flip = false, const uint8_t *remap = nullptr) {
+  uint8_t *px = pixels();
+  if (!px) return;
+  const int left = flip ? x - (img.w - 1 - img.ax) : x - img.ax, top = y - img.ay;
+  const int r0 = max(0, -top), r1 = min((int)img.h, GameDisplay::height - top);
+  for (int r = r0; r < r1; ++r) {
+    const uint8_t *p = img.data + img.rows[r];
+    uint8_t *dst = px + (top + r) * GameDisplay::width;
+    int sx = 0;
+    while (sx < img.w) {
+      const uint8_t b = *p++;
+      if (b & 0x80) { sx += b - 0x7F; continue; }
+      for (int n = b + 1; n > 0; --n, ++sx) {
+        const uint8_t c = *p++;
+        const int dx = flip ? left + img.w - 1 - sx : left + sx;
+        if (dx >= 0 && dx < GameDisplay::width) dst[dx] = remap ? remap[c] : c;
+      }
+    }
+  }
+}
+
+// Draws scaled so the image is (w * scale) wide, anchor on (x, y).
+inline void drawImageScaled(const Image &img, int x, int y, float scale, bool flip = false, const uint8_t *remap = nullptr) {
+  uint8_t *px = pixels();
+  if (!px || scale <= 0 || img.w > 512) return;
+  if (scale > 0.995f && scale < 1.005f) { drawImage(img, x, y, flip, remap); return; }
+  const int dw = max(1, (int)(img.w * scale)), dh = max(1, (int)(img.h * scale));
+  const int ax = (int)(img.ax * scale), ay = (int)(img.ay * scale);
+  const int left = flip ? x - (dw - 1 - ax) : x - ax, top = y - ay;
+  const int r0 = max(0, -top), r1 = min(dh, GameDisplay::height - top);
+  const int c0 = max(0, -left), c1 = min(dw, GameDisplay::width - left);
+  if (r0 >= r1 || c0 >= c1) return;
+  static uint16_t row[512];
+  int decoded = -1;
+  for (int r = r0; r < r1; ++r) {
+    const int sy = r * img.h / dh;
+    if (sy != decoded) { decodeRow(img, sy, row); decoded = sy; }
+    uint8_t *dst = px + (top + r) * GameDisplay::width + left;
+    for (int c = c0; c < c1; ++c) {
+      int sx = c * img.w / dw;
+      if (flip) sx = img.w - 1 - sx;
+      const uint16_t v = row[sx];
+      if (v < 0x100) dst[c] = remap ? remap[v] : (uint8_t)v;
+    }
+  }
+}
+
+// Picks the smallest of several sizes of one picture that is at least w wide,
+// so scaled-down sprites keep their detail.
+inline const Image &pickSize(const Image *const *sizes, int count, int w) {
+  for (int i = 0; i < count; ++i) if (sizes[i]->w >= w) return *sizes[i];
+  return *sizes[count - 1];
+}
+
+// A wide strip drawn with its top at y, scrolled by offset and wrapping around.
+inline void drawStrip(const Image &img, int y, int offset) {
+  uint8_t *px = pixels();
+  if (!px || img.w > 512) return;
+  static uint16_t row[512];
+  offset = ((offset % img.w) + img.w) % img.w;
+  for (int r = max(0, -y); r < img.h && y + r < GameDisplay::height; ++r) {
+    decodeRow(img, r, row);
+    uint8_t *dst = px + (y + r) * GameDisplay::width;
+    for (int x = 0, sx = offset; x < GameDisplay::width; ++x) {
+      const uint16_t v = row[sx];
+      if (v < 0x100) dst[x] = (uint8_t)v;
+      if (++sx == img.w) sx = 0;
+    }
+  }
+}
 } // namespace GameGfx
