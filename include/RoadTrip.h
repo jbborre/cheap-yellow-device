@@ -19,8 +19,10 @@ enum Prop { PALM, UMBRELLA, CACTUS, ROCK, PINE, SNOWMAN, BARN, HAYBALE, STREETLI
 constexpr float segLen = 200, roadW = 1000, camH = 1000, depth = 0.84f;
 constexpr float playerZ = camH * depth;       // The car sits this far ahead of the camera.
 constexpr float maxSpeed = segLen * 45;       // Fastest car's top speed, units per second.
-constexpr int drawDist = 60, horizonY = 120;
-constexpr int stageCount = 5, rivalCount = 5, trafficCount = 6, carCount = rivalCount + trafficCount;
+// 200 segments (40,000 units) reach almost to the horizon, so the road no
+// longer stops short in the middle of the fields.
+constexpr int drawDist = 200, horizonY = 120;
+constexpr int stageCount = 5, rivalCount = 5, trafficCount = 4, carCount = rivalCount + trafficCount;
 constexpr float startTime = 25, checkpointBonus = 20;
 
 struct Ride { const char *name; float top, accel, grip, offroad; Style style; uint16_t color; };
@@ -52,7 +54,7 @@ const Theme themes[stageCount] = {
   {"SUNNY COAST",   coast,  rgb(73,146,255), rgb(182,219,255), rgb(255,219,146), rgb(255,219,109), rgb(255,36,36), TFT_WHITE, rgb(109,109,109), PALM, UMBRELLA},
   {"CACTUS CANYON", canyon, rgb(255,146,73), rgb(255,219,146), rgb(219,146,73),  rgb(219,109,73),  rgb(255,255,255), rgb(146,36,0), rgb(109,73,73), CACTUS, ROCK},
   {"PINE PEAKS",    peaks,  rgb(109,182,255), rgb(219,255,255), rgb(73,182,73),   rgb(73,146,73),   rgb(255,36,36), TFT_WHITE, rgb(109,109,109), PINE, SNOWMAN},
-  {"FARM FIELDS",   farm,   rgb(255,182,109), rgb(255,255,170), rgb(146,219,73),  rgb(182,219,73),  rgb(255,255,255), rgb(219,0,0), rgb(109,109,109), BARN, HAYBALE},
+  {"FARM FIELDS",   farm,   rgb(255,182,109), rgb(255,255,170), rgb(146,219,73),  rgb(182,219,73),  rgb(255,255,255), rgb(219,0,0), rgb(109,109,109), HAYBALE, BARN},
   {"NEON NIGHT",    neon,   rgb(0,0,36),     rgb(73,0,109),    rgb(36,36,73),    rgb(36,36,36),    rgb(255,0,255), rgb(0,255,255), rgb(73,73,73), STREETLIGHT, NEON},
 };
 
@@ -61,7 +63,7 @@ const TouchButton garageCards[3] = {{5,38,100,198},{110,38,100,198},{215,38,100,
 const TouchButton nextButton = {40, 164, 112, 34};
 const TouchButton leaveButton = {168, 164, 112, 34};
 
-struct Car { float z, x, targetX, speed; uint16_t color; uint8_t style; bool rival; };
+struct Car { float z, x, targetX, speed; uint16_t color; uint8_t style; bool rival; float cruise; };
 
 Stage stage = GARAGE;
 int ride = 0, level = 0;
@@ -282,7 +284,8 @@ void drawSegment(int n, uint32_t now) {
       prop(STREETLIGHT, (int)(p.x1 - p.w1 * 1.35f), (int)p.y1, p.w1, now, idx);
       prop(STREETLIGHT, (int)(p.x1 + p.w1 * 1.35f), (int)p.y1, p.w1, now, idx, true);
     } else if (idx % 3 == 0 && h % 4 != 0) {
-      const Prop kind = (h >> 8) % 3 == 0 ? t.propB : t.propA;
+      Prop kind = (h >> 8) % 3 == 0 ? t.propB : t.propA;
+      if (kind == BARN && (h >> 16) % 3) kind = HAYBALE;  // Barns are a rare sight.
       const float side = (h >> 4) & 1 ? -1 : 1;
       const float spread = kind == BARN ? 2.2f : 1.4f;
       prop(kind, (int)(p.x1 + side * p.w1 * (spread + ((h >> 12) % 60) / 100.0f)), (int)p.y1, p.w1, now, idx / 3);
@@ -488,6 +491,7 @@ void placeTraffic(Car &c, float z) {
   c = {z, lanes[random(0, 3)], 0, maxSpeed * (0.32f + random(0, 20) / 100.0f),
        trafficColors[random(0, 4)], (uint8_t)(kind == 0 ? VAN : kind == 1 ? TRUCK : SEDAN), false};
   c.targetX = c.x;
+  c.cruise = c.speed;
 }
 
 void startStage() {
@@ -504,7 +508,7 @@ void startStage() {
     cars[i] = {playerDist() + 260 + i * 260, x, x, maxSpeed * (0.70f + i * 0.04f + level * 0.01f),
                rivalColors[i], (uint8_t)rivalStyles[i], true};
   }
-  for (int i = 0; i < trafficCount; ++i) placeTraffic(cars[rivalCount + i], playerDist() + 3000 + i * 2200);
+  for (int i = 0; i < trafficCount; ++i) placeTraffic(cars[rivalCount + i], playerDist() + 4000 + i * 6000);
   place = rank();
   lastFrame = millis();
   GameAudio::play(GameAudio::Click);
@@ -555,7 +559,7 @@ void step(float dt, uint8_t held, bool touching, uint16_t tx) {
   speed = constrain(speed, 0.0f, r.top * maxSpeed);
   position += speed * dt;
 
-  // Cars ahead: rivals weave around traffic; anyone you rear-end slows you down.
+  // Cars ahead: rivals weave around traffic; anyone you rear-end gets shoved along.
   for (int i = 0; i < carCount; ++i) {
     Car &c = cars[i];
     if (c.rival) {
@@ -574,18 +578,26 @@ void step(float dt, uint8_t held, bool touching, uint16_t tx) {
       if (pz > 0 && pz < 700 && fabsf(playerX - c.targetX) < 0.5f) c.targetX = playerX > 0 ? -0.6f : 0.6f;
       c.x += constrain(c.targetX - c.x, -dt, dt);
     }
+    else c.speed += (c.cruise - c.speed) * min(1.0f, dt * 0.6f);  // Traffic settles back to its own pace.
     c.z += c.speed * dt;
     const float dz = c.z - playerDist();
     if (dz > 0 && dz < 180 && fabsf(c.x - playerX) < 0.55f && speed > c.speed) {
-      speed = c.speed * 0.6f;
-      position = c.z - 180 - playerZ;
-      shake = 0.4f;
+      // Bump: the car you hit is shoved ahead and aside, and you lose only part
+      // of the difference in speed, so it pulls away instead of blocking you.
+      const float impact = speed - c.speed;
+      c.speed += impact * 0.8f;
+      speed -= impact * 0.4f;
+      c.x = constrain(c.x + (c.x >= playerX ? 0.3f : -0.3f), -1.3f, 1.3f);
+      if (c.rival) c.targetX = c.x;
+      c.z = playerDist() + 180;
+      shake = 0.25f;
       DamageLed::flash(millis());
-      GameAudio::play(GameAudio::Crash);
+      GameAudio::play(GameAudio::Hit);
     }
     // Traffic you've left behind reappears far up the road.
     if (!c.rival && dz < -1500) {
-      const float z = playerDist() + drawDist * segLen + random(0, 3000);
+      // Far enough ahead that it's too small to see appear.
+      const float z = playerDist() + 24000 + random(0, 10000);
       if (z < finishZ() - 1000) placeTraffic(c, z);
     }
   }

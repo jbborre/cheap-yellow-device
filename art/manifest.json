@@ -37,7 +37,7 @@
    "name": "knightKick",
    "anchor": [
     20,
-    59
+    64
    ]
   },
   {
@@ -148,8 +148,8 @@
    "file": "blackknight/pirate_windup.png",
    "name": "pirateWindup",
    "anchor": [
-    15,
-    74
+    20,
+    63
    ]
   },
   {
@@ -228,8 +228,8 @@
    "file": "blackknight/captain_windup.png",
    "name": "captainWindup",
    "anchor": [
-    26,
-    126
+    43,
+    104
    ]
   },
   {
@@ -237,7 +237,7 @@
    "name": "captainRaise",
    "anchor": [
     26,
-    130
+    135
    ]
   },
   {
@@ -276,8 +276,8 @@
    "file": "blackknight/thug_windup.png",
    "name": "thugWindup",
    "anchor": [
-    14,
-    80
+    23,
+    67
    ]
   },
   {

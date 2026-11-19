@@ -18,10 +18,10 @@ POSES = {
     "idle":   dict(lean=3,   fl=(12, 14),  bl=(-10, 6),  fa=(25, 70),  ba=(-5, 60),  weapon=62),
     "walk1":  dict(lean=5,   fl=(28, 18),  bl=(-24, 28), fa=(-18, 35), ba=(28, 45),  weapon=40),
     "walk2":  dict(lean=5,   fl=(-22, 28), bl=(26, 16),  fa=(28, 45),  ba=(-18, 35), weapon=75),
-    "punch":  dict(lean=10,  fl=(24, 10),  bl=(-28, 6),  fa=(88, 4),   ba=(15, 115), weapon=92),
+    "punch":  dict(lean=10,  fl=(24, 10),  bl=(-28, 6),  fa=(88, 4),   ba=(15, 115), weapon=92, grip=0),
     "kick":   dict(lean=-12, fl=(100, 8),  bl=(-4, 6),   fa=(50, 60),  ba=(-35, 50), weapon=125),
     "windup": dict(lean=-6,  fl=(16, 12),  bl=(-16, 8),  fa=(165, 25), ba=(20, 70),  weapon=205),
-    "raise":  dict(lean=-4,  fl=(14, 10),  bl=(-14, 8),  fa=(176, 6),  ba=(150, 30), weapon=182),
+    "raise":  dict(lean=-4,  fl=(14, 10),  bl=(-14, 8),  fa=(176, 6),  ba=(150, 30), weapon=182, grip=0),
     "hurt":   dict(lean=-16, fl=(20, 22),  bl=(-6, 14),  fa=(-40, 30), ba=(-70, 20), weapon=15, head=(-2, 1)),
     "dash":   dict(lean=24,  fl=(40, 25),  bl=(-42, 35), fa=(85, 10),  ba=(-35, 70), weapon=90, head=(1, 2)),
 }
@@ -62,7 +62,10 @@ def skeleton(pose, s):
         if k in ("up", "right", "fshin", "bshin", "ffore", "bfore"):
             continue
         J[k] = v + np.array([0, drop])
-    J["weapon"] = ang(P["weapon"])
+    # A held weapon sits at a fixed angle to the forearm, like a real grip:
+    # about 70 degrees further forward/up, or straight along it for a thrust.
+    a, e = P["fa"]
+    J["weapon"] = ang(a + e + P.get("grip", 70))
     return J
 
 
@@ -126,21 +129,24 @@ def eye(c, J, s, color=INK, dx=3.2, dy=-0.6, r=1.0):
 
 
 def blade(c, J, s, length, width, steel=(220, 220, 240), curve=0.0, guard=(219, 182, 0)):
-    """Blade along the weapon direction from the front hand."""
+    """A sword gripped in the front fist: pommel behind, guard and blade in front."""
     h, d = J["fhand"], J["weapon"]
     n = perp(d)
+    c.shade(c.capsule(h - d * 3.4 * s, h + d * 2.4 * s, 1.1 * s), (90, 50, 20), k=0.5)  # Leather grip.
+    c.shade(c.circle(*(h - d * 3.8 * s), 1.4 * s), guard or (150, 150, 160), k=0.5)    # Pommel.
+    base = h + d * 2.8 * s
     pts_a, pts_b = [], []
     for i in range(9):
         t = i / 8
         bend = curve * math.sin(t * math.pi * 0.9) * length
         w = width * (1 - 0.75 * t ** 2)
-        p = h + d * length * t + n * bend
+        p = base + d * length * t + n * bend
         pts_a.append(tuple(p + n * w / 2)); pts_b.append(tuple(p - n * w / 2))
     m = c.poly(pts_a + pts_b[::-1])
     c.shade(m, steel, hi=(255, 255, 255), lo=darker(steel, 0.35), k=0.6)
-    c.paint(c.line(tuple(h + d * length * 0.12), tuple(h + d * length * 0.8 + n * curve * length * 0.6), 0.5 * s), lighter(steel, 0.6))
+    c.paint(c.line(tuple(base + d * length * 0.12), tuple(base + d * length * 0.8 + n * curve * length * 0.6), 0.5 * s), lighter(steel, 0.6))
     if guard:
-        c.shade(c.capsule(h + d * 2 * s + n * 3.6 * s, h + d * 2 * s - n * 3.6 * s, 1.0 * s), guard)
+        c.shade(c.capsule(base + n * 3.6 * s, base - n * 3.6 * s, 1.0 * s), guard)
 
 
 # ---- Heroes ---------------------------------------------------------------
